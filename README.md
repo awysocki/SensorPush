@@ -49,6 +49,9 @@ Set credentials and behavior using PG3 custom parameters (or environment variabl
 - `use_short_poll_updates` (`true`/`false`)
 - `sample_limit` (default: `1`)
 
+In PG3 Admin, these are also published as typed fields on the configuration page so
+Email/Password can be edited directly in the UI.
+
 ### Environment Variables
 
 - `SENSORPUSH_EMAIL`

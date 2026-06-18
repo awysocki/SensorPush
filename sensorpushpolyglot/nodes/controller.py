@@ -35,6 +35,7 @@ class SensorPushController(Node):
         self._runtime_config = RuntimeConfig()
         self._client: SensorPushClient | None = None
         self._last_poll_utc: datetime | None = None
+        self._typed_params_data: Dict[str, Any] = {}
         self._reload_config()
 
     @classmethod
@@ -138,12 +139,37 @@ class SensorPushController(Node):
             self._runtime_config.sample_limit,
         )
 
+    def custom_typed_data_changed(self, params: Dict[str, Any] | None = None) -> None:
+        if isinstance(params, dict):
+            self._typed_params_data = dict(params)
+        self._reload_config()
+        LOGGER.info("Custom typed params updated from PG3 Admin form")
+
     def _get_custom_params(self) -> Dict[str, str]:
         config = getattr(self.poly, "polyConfig", None) or {}
-        params = config.get("customParams", {})
+        params = {}
+
+        raw_custom = config.get("customParams", {})
+        if isinstance(raw_custom, dict):
+            params.update(raw_custom)
+
+        for key in ("customtypedparams", "customTypedParams", "customTypedData", "customtypeddata"):
+            typed = config.get(key, {})
+            if isinstance(typed, dict):
+                params.update(typed)
+
+        if self._typed_params_data:
+            params.update(self._typed_params_data)
+
         if not isinstance(params, dict):
             return {}
-        return {str(k): str(v) for k, v in params.items()}
+        normalized: Dict[str, str] = {}
+        for k, v in params.items():
+            if isinstance(v, list):
+                normalized[str(k)] = str(v[0]) if v else ""
+            else:
+                normalized[str(k)] = str(v)
+        return normalized
 
     def _reload_config(self) -> None:
         custom_params = self._get_custom_params()
