@@ -175,16 +175,22 @@ class SensorPushController(Node):
         custom_params = self._get_custom_params()
         self._runtime_config = RuntimeConfig.from_sources(custom_params, os.environ)
 
-        if self._runtime_config.email and self._runtime_config.password:
+        if self._runtime_config.api_token or (self._runtime_config.email and self._runtime_config.password):
             self._client = SensorPushClient(
                 email=self._runtime_config.email,
                 password=self._runtime_config.password,
+                api_token=self._runtime_config.api_token,
             )
+            if self._runtime_config.api_token:
+                LOGGER.info("Auth mode: API token (preferred)")
+            else:
+                LOGGER.info("Auth mode: email/password fallback (no API token configured)")
         else:
             self._client = None
             LOGGER.warning(
-                "SensorPush credentials not configured. Set sensorpush_email and "
-                "sensorpush_password custom params (or environment variables)."
+                "SensorPush credentials not configured. Preferred: set sensorpush_api_token. "
+                "Fallback: set sensorpush_email + sensorpush_password "
+                "custom params (or environment variables)."
             )
 
     def _run_poll_cycle(self, reason: str) -> None:

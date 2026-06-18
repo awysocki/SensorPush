@@ -13,9 +13,16 @@ class SensorPushApiError(RuntimeError):
 class SensorPushClient:
     BASE_URL = "https://api.sensorpush.com/api/v1"
 
-    def __init__(self, email: str, password: str, timeout_seconds: int = 20) -> None:
+    def __init__(
+        self,
+        email: str,
+        password: str,
+        api_token: str = "",
+        timeout_seconds: int = 20,
+    ) -> None:
         self.email = email
         self.password = password
+        self.api_token = api_token
         self.timeout_seconds = timeout_seconds
         self._access_token: Optional[str] = None
         self._access_expires_at: Optional[datetime] = None
@@ -78,7 +85,11 @@ class SensorPushClient:
         self._access_expires_at = datetime.now(timezone.utc) + timedelta(minutes=55)
 
     def _get_access_token(self) -> str:
+        if self.api_token:
+            return self.api_token
         if not self._is_token_valid():
+            if not self.email or not self.password:
+                raise SensorPushApiError("No api_token or email/password available for authentication")
             self._authenticate()
         if not self._access_token:
             raise SensorPushApiError("Access token not available after authentication")

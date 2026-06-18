@@ -14,14 +14,20 @@ def _register_admin_params(polyglot: udi_interface.Interface) -> None:
             {
                 "name": "sensorpush_email",
                 "title": "SensorPush Email",
-                "desc": "Email used to sign in to SensorPush Cloud API.",
-                "isRequired": True,
+                "desc": "Fallback only: email used when API token is not provided.",
+                "isRequired": False,
             },
             {
                 "name": "sensorpush_password",
                 "title": "SensorPush Password",
-                "desc": "Password used to sign in to SensorPush Cloud API.",
-                "isRequired": True,
+                "desc": "Fallback only: password used when API token is not provided.",
+                "isRequired": False,
+            },
+            {
+                "name": "sensorpush_api_token",
+                "title": "SensorPush API Token",
+                "desc": "Recommended auth method: bearer token used first when present.",
+                "isRequired": False,
             },
             {
                 "name": "use_short_poll_updates",

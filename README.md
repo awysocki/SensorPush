@@ -46,11 +46,17 @@ Set credentials and behavior using PG3 custom parameters (or environment variabl
 
 - `sensorpush_email`
 - `sensorpush_password`
+- `sensorpush_api_token` (optional)
 - `use_short_poll_updates` (`true`/`false`)
 - `sample_limit` (default: `1`)
 
 In PG3 Admin, these are also published as typed fields on the configuration page so
 Email/Password can be edited directly in the UI.
+
+Authentication precedence:
+
+- Preferred: set `sensorpush_api_token` and authenticate with token only.
+- Fallback: use `sensorpush_email` + `sensorpush_password` only when no token is configured.
 
 ### Environment Variables
 
