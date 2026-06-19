@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 from datetime import datetime, timezone
@@ -46,7 +47,7 @@ class SensorPushController(Node):
     def _run_config_refresh_once(self, source: str) -> None:
         now = datetime.now(timezone.utc)
         if self._last_config_refresh_utc and (now - self._last_config_refresh_utc).total_seconds() < 2:
-            LOGGER.info(
+            LOGGER.debug(
                 "Skipping duplicate config refresh from %s (version=%s)",
                 source,
                 self._server_version,
@@ -122,6 +123,24 @@ class SensorPushController(Node):
         except (TypeError, ValueError):
             return None
 
+    def _extract_float(self, payload: Any, keys: tuple[str, ...]) -> float | None:
+        if isinstance(payload, dict):
+            for key in keys:
+                value = payload.get(key)
+                number = self._coerce_float(value)
+                if number is not None:
+                    return number
+            for value in payload.values():
+                number = self._extract_float(value, keys)
+                if number is not None:
+                    return number
+        elif isinstance(payload, list):
+            for value in payload:
+                number = self._extract_float(value, keys)
+                if number is not None:
+                    return number
+        return None
+
     def _sync_sensor_nodes(
         self,
         sensors: Dict[str, Any],
@@ -146,7 +165,7 @@ class SensorPushController(Node):
                 if discover_nodes:
                     node = SensorPushSensorNode(self.poly, address=address, name=sensor_name, primary=self.address)
                     self.poly.addNode(node)
-                    LOGGER.info("Created child sensor node: %s (%s)", sensor_name, address)
+                    LOGGER.debug("Created child sensor node: %s (%s)", sensor_name, address)
                 else:
                     skipped_updates.append(f"{sensor_name} ({address})")
                     LOGGER.debug(
@@ -164,25 +183,93 @@ class SensorPushController(Node):
                     latest_sample = first
 
             battery_v = None
+            sensor_type = None
             if isinstance(sensor_data, dict):
                 battery_v = self._coerce_float(sensor_data.get("battery_voltage"))
+                sensor_type = str(
+                    sensor_data.get("device_type")
+                    or sensor_data.get("sensor_type")
+                    or sensor_data.get("type")
+                    or sensor_data.get("model")
+                    or ""
+                ).strip() or None
+
+            temp_f = self._coerce_float(latest_sample.get("temperature"))
+            humidity_pct = self._coerce_float(latest_sample.get("humidity"))
+            metric_sources = [latest_sample, sensor_data]
+            barometric_pressure = None
+            dew_point_f = None
+            vpd = None
+            heat_index_f = None
+            for source in metric_sources:
+                if barometric_pressure is None:
+                    barometric_pressure = self._extract_float(
+                        source,
+                        (
+                            "barometric_pressure",
+                            "barometricPressure",
+                            "barometricpressure",
+                            "pressure",
+                            "pressure_inhg",
+                            "pressureInHg",
+                        ),
+                    )
+                if dew_point_f is None:
+                    dew_point_f = self._extract_float(
+                        source,
+                        (
+                            "dew_point",
+                            "dewPoint",
+                            "dewpoint",
+                            "dew_point_f",
+                            "dewPointF",
+                        ),
+                    )
+                if vpd is None:
+                    vpd = self._extract_float(source, ("vpd", "vapour_pressure_deficit", "vapourPressureDeficit"))
+                if heat_index_f is None:
+                    heat_index_f = self._extract_float(
+                        source,
+                        (
+                            "heat_index",
+                            "heatIndex",
+                            "heatindex",
+                            "heat_index_f",
+                            "heatIndexF",
+                        ),
+                    )
 
             node.set_metrics(
                 connected=True,
-                temperature_f=self._coerce_float(latest_sample.get("temperature")),
-                humidity_pct=self._coerce_float(latest_sample.get("humidity")),
+                temperature_f=temp_f,
+                humidity_pct=humidity_pct,
                 battery_v=battery_v,
+                barometric_pressure=barometric_pressure,
+                dew_point_f=dew_point_f,
+                vpd=vpd,
+                heat_index_f=heat_index_f,
+            )
+            LOGGER.debug(
+                "Node %s Updated: Temp=%s°F, Humidity=%s%%, Pressure=%s, DewPoint=%s°F, VPD=%s, HeatIndex=%s°F, Type=%s",
+                sensor_name,
+                temp_f,
+                humidity_pct,
+                barometric_pressure,
+                dew_point_f,
+                vpd,
+                heat_index_f,
+                sensor_type,
             )
             attempted_updates.append(f"{sensor_name} ({address})")
 
-        LOGGER.info(
+        LOGGER.debug(
             "SensorPush %s node update targets (%s): %s",
             reason,
             len(attempted_updates),
             ", ".join(attempted_updates) if attempted_updates else "<none>",
         )
         if skipped_updates:
-            LOGGER.info(
+            LOGGER.debug(
                 "SensorPush %s node updates skipped (%s): %s",
                 reason,
                 len(skipped_updates),
@@ -200,7 +287,7 @@ class SensorPushController(Node):
             for address in stale_addresses:
                 try:
                     self._delete_node(address)
-                    LOGGER.info("Deleted stale child sensor node: %s", address)
+                    LOGGER.debug("Deleted stale child sensor node: %s", address)
                 except Exception:
                     LOGGER.exception("Failed deleting stale child sensor node: %s", address)
 
@@ -212,20 +299,28 @@ class SensorPushController(Node):
         )
         self._run_poll_cycle("startup", discover_nodes=True)
 
+    def stop(self) -> None:
+        LOGGER.info("SensorPushController stopped. version=%s", self._server_version)
+
     def custom_params_changed(self, params: Dict[str, Any] | None = None) -> None:
         self._reload_config()
-        LOGGER.info(
+        LOGGER.debug(
             "Custom params updated. update_mode=%s sample_limit=%s",
             "short" if self._runtime_config.use_short_poll_updates else "long",
             self._runtime_config.sample_limit,
         )
+        # Update MQTT logger level if verbose_mqtt_logging param changed
+        custom_params = self._get_custom_params()
+        mqtt_logger = logging.getLogger("udi_interface.interface")
+        verbose = str(custom_params.get("verbose_mqtt_logging") or "0").lower() in ("1", "true")
+        mqtt_logger.setLevel(logging.INFO if verbose else logging.WARNING)
         self._run_config_refresh_once("custom_params_changed")
 
     def custom_typed_data_changed(self, params: Dict[str, Any] | None = None) -> None:
         if isinstance(params, dict):
             self._typed_params_data = dict(params)
         self._reload_config()
-        LOGGER.info("Custom typed params updated from PG3 Admin form")
+        LOGGER.debug("Custom typed params updated from PG3 Admin form")
         self._run_config_refresh_once("custom_typed_data_changed")
 
     def poll(self, poll_data: Any) -> None:
@@ -281,7 +376,7 @@ class SensorPushController(Node):
                 email=self._runtime_config.email,
                 account_token=self._runtime_config.account_token,
             )
-            LOGGER.info("Auth mode: account token -> OAuth access token exchange")
+            LOGGER.debug("Auth mode: account token -> OAuth access token exchange")
         else:
             self._client = None
             LOGGER.warning(
@@ -297,7 +392,7 @@ class SensorPushController(Node):
             self._poll_cycle_seq += 1
             cycle_id = self._poll_cycle_seq
             LOGGER.info(
-                "Starting SensorPush poll cycle: id=%s reason=%s discover_nodes=%s version=%s",
+                "SensorPush updating: id=%s reason=%s discover_nodes=%s version=%s",
                 cycle_id,
                 reason,
                 discover_nodes,
@@ -306,12 +401,11 @@ class SensorPushController(Node):
             sensors_payload = self._client.list_sensors()
             sensors = sensors_payload if isinstance(sensors_payload, dict) else {}
             sensor_ids = list(sensors.keys())
-            LOGGER.debug("SensorPush sensors call complete: sensor_count=%s", len(sensor_ids))
             sensor_descriptions = [
                 self._describe_sensor(sensor_id, sensor_data)
                 for sensor_id, sensor_data in sensors.items()
             ]
-            LOGGER.info(
+            LOGGER.debug(
                 "SensorPush sensors returned (%s): %s",
                 len(sensor_descriptions),
                 ", ".join(sensor_descriptions) if sensor_descriptions else "<none>",
@@ -324,7 +418,6 @@ class SensorPushController(Node):
             sample_map = samples_payload.get("sensors", {}) if isinstance(samples_payload, dict) else {}
             if not isinstance(sample_map, dict):
                 sample_map = {}
-            LOGGER.debug("SensorPush samples call complete: sensor_groups=%s", len(sample_map))
 
             self._sync_sensor_nodes(
                 sensors=sensors,
@@ -345,7 +438,7 @@ class SensorPushController(Node):
             self.reportDrivers()
 
             self._last_poll_utc = datetime.now(timezone.utc)
-            LOGGER.info(
+            LOGGER.debug(
                 "SensorPush %s update complete: id=%s sensors=%s samples=%s discover_nodes=%s version=%s",
                 reason,
                 cycle_id,
@@ -362,20 +455,16 @@ class SensorPushController(Node):
             LOGGER.exception("Unexpected error during %s poll", reason)
 
     def shortPoll(self) -> None:
-        if self._runtime_config.use_short_poll_updates:
-            # In short-poll mode, every poll performs full discovery and updates.
-            LOGGER.info("shortPoll triggered: executing update cycle (version=%s)", self._server_version)
-            self._run_poll_cycle("shortPoll", discover_nodes=True)
-        else:
-            LOGGER.info("shortPoll triggered: skipped because use_short_poll_updates=false (version=%s)", self._server_version)
+        # Short poll always updates child node data.
+        # Discovery behavior is controlled by use_short_poll_updates.
+        discover_nodes = self._runtime_config.use_short_poll_updates
+        LOGGER.debug("shortPoll triggered: executing update cycle discover_nodes=%s (version=%s)", discover_nodes, self._server_version)
+        self._run_poll_cycle("shortPoll", discover_nodes=discover_nodes)
 
     def longPoll(self) -> None:
-        if not self._runtime_config.use_short_poll_updates:
-            # In production mode, long poll performs discovery and updates.
-            LOGGER.info("longPoll triggered: executing update cycle (version=%s)", self._server_version)
-            self._run_poll_cycle("longPoll", discover_nodes=True)
-        else:
-            LOGGER.info("longPoll triggered: skipped because use_short_poll_updates=true (version=%s)", self._server_version)
+        # Long poll is authoritative discovery pass: add/remove nodes and update data.
+        LOGGER.debug("longPoll triggered: executing discovery+update cycle (version=%s)", self._server_version)
+        self._run_poll_cycle("longPoll", discover_nodes=True)
 
     def query(self, command: Dict[str, Any] | None = None) -> bool:
         self._run_poll_cycle("query", discover_nodes=True)

@@ -20,6 +20,10 @@
       <st id="GV0" editor="temperature_f" />
       <st id="GV1" editor="humidity_pct" />
       <st id="GV2" editor="voltage_v" />
+      <st id="GV3" editor="count" />
+      <st id="GV4" editor="temperature_f" />
+      <st id="GV5" editor="count" />
+      <st id="GV6" editor="temperature_f" />
     </sts>
     <cmds>
       <sends />

@@ -40,6 +40,11 @@ def _dedupe_all_loggers() -> None:
             _dedupe_logger_handlers(obj)
 
 
+def _set_mqtt_logger_silent() -> None:
+    """Suppress MQTT driver update messages at startup; controller will update based on config."""
+    logging.getLogger("udi_interface.interface").setLevel(logging.WARNING)
+
+
 def _register_admin_params(polyglot: udi_interface.Interface) -> None:
     typed_params = udi_interface.Custom(polyglot, "customtypedparams")
     typed_params.load(
@@ -69,6 +74,13 @@ def _register_admin_params(polyglot: udi_interface.Interface) -> None:
                 "desc": "Number of samples to request per sensor each poll (1-100).",
                 "isRequired": False,
             },
+            {
+                "name": "verbose_mqtt_logging",
+                "title": "Verbose MQTT Logging",
+                "desc": "Default is false (No/0): set true to show all MQTT driver update messages for troubleshooting.",
+                "default": "0",
+                "isRequired": False,
+            },
         ],
         True,
     )
@@ -78,12 +90,16 @@ def main() -> None:
     polyglot = udi_interface.Interface([])
     polyglot.start()
     _dedupe_all_loggers()
+    _set_mqtt_logger_silent()
     _register_admin_params(polyglot)
     polyglot.setCustomParamsDoc()
 
     controller = SensorPushController(polyglot)
     polyglot.subscribe(polyglot.START, controller.start)
     polyglot.subscribe(polyglot.POLL, controller.poll)
+    stop_event = getattr(polyglot, "STOP", None)
+    if stop_event is not None:
+        polyglot.subscribe(stop_event, controller.stop)
     polyglot.subscribe(polyglot.CUSTOMPARAMS, controller.custom_params_changed)
     custom_typed_data_event = getattr(polyglot, "CUSTOMTYPEDDATA", None)
     if custom_typed_data_event is not None:
