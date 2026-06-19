@@ -1,9 +1,33 @@
 from __future__ import annotations
 
+import logging
+
 import udi_interface
 from nodes.controller import SensorPushController
 
 LOGGER = udi_interface.LOGGER
+
+
+def _dedupe_logger_handlers(logger: logging.Logger) -> None:
+    seen: set[tuple[str, str]] = set()
+    for handler in list(logger.handlers):
+        destination = ""
+        if hasattr(handler, "baseFilename"):
+            destination = str(getattr(handler, "baseFilename", ""))
+        elif hasattr(handler, "stream"):
+            destination = repr(getattr(handler, "stream", ""))
+
+        key = (handler.__class__.__name__, destination)
+        if key in seen:
+            logger.removeHandler(handler)
+        else:
+            seen.add(key)
+
+
+def _dedupe_all_loggers() -> None:
+    _dedupe_logger_handlers(logging.getLogger())
+    _dedupe_logger_handlers(logging.getLogger("udi_interface"))
+    _dedupe_logger_handlers(LOGGER)
 
 
 def _register_admin_params(polyglot: udi_interface.Interface) -> None:
@@ -43,11 +67,13 @@ def _register_admin_params(polyglot: udi_interface.Interface) -> None:
 def main() -> None:
     polyglot = udi_interface.Interface([])
     polyglot.start()
+    _dedupe_all_loggers()
     _register_admin_params(polyglot)
     polyglot.setCustomParamsDoc()
 
     controller = SensorPushController(polyglot)
     polyglot.subscribe(polyglot.START, controller.start)
+    polyglot.subscribe(polyglot.POLL, controller.poll)
     polyglot.subscribe(polyglot.CUSTOMPARAMS, controller.custom_params_changed)
     custom_typed_data_event = getattr(polyglot, "CUSTOMTYPEDDATA", None)
     if custom_typed_data_event is not None:
