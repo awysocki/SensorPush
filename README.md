@@ -23,6 +23,9 @@ Child node metrics currently include:
 - Temperature (F)
 - Humidity (%)
 - Battery voltage (V)
+- Dew point (F)
+- VPD (kPa)
+- Signal (dBm, when provided by API)
 
 ## Polling Strategy
 
@@ -83,6 +86,5 @@ Planned GitHub remote:
 
 ## Next Steps
 
-- Add child nodes per sensor (temperature, humidity, battery).
 - Add robust token refresh handling using refresh token endpoint.
 - Add BLE mode integration.

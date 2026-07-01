@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable
@@ -93,6 +94,68 @@ class SensorPushController(Node):
         except (TypeError, ValueError):
             return None
 
+    def _first_float(self, container: Any, keys: Iterable[str]) -> float | None:
+        if not isinstance(container, dict):
+            return None
+        for key in keys:
+            if key in container:
+                value = self._coerce_float(container.get(key))
+                if value is not None:
+                    return value
+        return None
+
+    def _calc_dew_point_f(self, temperature_f: float | None, humidity_pct: float | None) -> float | None:
+        if temperature_f is None or humidity_pct is None:
+            return None
+        if humidity_pct <= 0 or humidity_pct > 100:
+            return None
+        temp_c = (temperature_f - 32.0) * (5.0 / 9.0)
+        a = 17.62
+        b = 243.12
+        gamma = math.log(humidity_pct / 100.0) + ((a * temp_c) / (b + temp_c))
+        dew_c = (b * gamma) / (a - gamma)
+        return (dew_c * 9.0 / 5.0) + 32.0
+
+    def _calc_vpd_kpa(self, temperature_f: float | None, humidity_pct: float | None) -> float | None:
+        if temperature_f is None or humidity_pct is None:
+            return None
+        if humidity_pct < 0 or humidity_pct > 100:
+            return None
+        temp_c = (temperature_f - 32.0) * (5.0 / 9.0)
+        svp = 0.6108 * math.exp((17.27 * temp_c) / (temp_c + 237.3))
+        return svp * (1.0 - (humidity_pct / 100.0))
+
+    def _calc_heat_index_f(self, temperature_f: float | None, humidity_pct: float | None) -> float | None:
+        if temperature_f is None or humidity_pct is None:
+            return None
+        if humidity_pct < 0 or humidity_pct > 100:
+            return None
+
+        t = temperature_f
+        rh = humidity_pct
+
+        if t < 80.0 or rh < 40.0:
+            return t
+
+        heat_index = (
+            -42.379
+            + 2.04901523 * t
+            + 10.14333127 * rh
+            - 0.22475541 * t * rh
+            - 0.00683783 * t * t
+            - 0.05481717 * rh * rh
+            + 0.00122874 * t * t * rh
+            + 0.00085282 * t * rh * rh
+            - 0.00000199 * t * t * rh * rh
+        )
+
+        if rh < 13 and 80 <= t <= 112:
+            heat_index -= ((13 - rh) / 4) * math.sqrt((17 - abs(t - 95)) / 17)
+        elif rh > 85 and 80 <= t <= 87:
+            heat_index += ((rh - 85) / 10) * ((87 - t) / 5)
+
+        return heat_index
+
     def _sync_sensor_nodes(self, sensors: Dict[str, Any], sample_map: Dict[str, Any]) -> None:
         active_addresses: set[str] = set()
 
@@ -116,16 +179,50 @@ class SensorPushController(Node):
                 first = samples[0]
                 if isinstance(first, dict):
                     latest_sample = first
+            if isinstance(sensor_data, dict):
+                LOGGER.debug("Sensor metadata keys for %s: %s", sensor_id, sorted(sensor_data.keys()))
+            if latest_sample:
+                LOGGER.debug("Latest sample keys for %s: %s", sensor_id, sorted(latest_sample.keys()))
 
             battery_v = None
             if isinstance(sensor_data, dict):
-                battery_v = self._coerce_float(sensor_data.get("battery_voltage"))
+                battery_v = self._first_float(sensor_data, ("battery_voltage", "batteryVoltage", "voltage"))
+
+            temperature_f = self._first_float(latest_sample, ("temperature", "temperature_f", "temp"))
+            humidity_pct = self._first_float(latest_sample, ("humidity", "humidity_pct", "rh"))
+            dew_point_f = self._first_float(latest_sample, ("dewpoint", "dew_point", "dewPoint", "dewpoint_f"))
+            if dew_point_f is None:
+                dew_point_f = self._calc_dew_point_f(temperature_f, humidity_pct)
+
+            vpd_kpa = self._first_float(latest_sample, ("vpd", "vpd_kpa", "vapor_pressure_deficit"))
+            if vpd_kpa is None:
+                vpd_kpa = self._calc_vpd_kpa(temperature_f, humidity_pct)
+
+            signal_dbm = self._first_float(sensor_data, ("rssi", "signal", "signal_dbm", "signalStrength"))
+            barometric = self._first_float(
+                latest_sample,
+                ("barometric", "barometric_pressure", "pressure", "pressure_inhg", "pressure_hpa"),
+            )
+            if barometric is None:
+                barometric = self._first_float(
+                    sensor_data,
+                    ("barometric", "barometric_pressure", "pressure", "pressure_inhg", "pressure_hpa"),
+                )
+
+            heat_index_f = self._first_float(latest_sample, ("heatindex", "heat_index", "heatIndex", "heat_index_f"))
+            if heat_index_f is None:
+                heat_index_f = self._calc_heat_index_f(temperature_f, humidity_pct)
 
             node.set_metrics(
                 connected=True,
-                temperature_f=self._coerce_float(latest_sample.get("temperature")),
-                humidity_pct=self._coerce_float(latest_sample.get("humidity")),
+                temperature_f=temperature_f,
+                humidity_pct=humidity_pct,
                 battery_v=battery_v,
+                dew_point_f=dew_point_f,
+                vpd_kpa=vpd_kpa,
+                signal_dbm=signal_dbm,
+                barometric=barometric,
+                heat_index_f=heat_index_f,
             )
 
         existing_sensor_addresses = {

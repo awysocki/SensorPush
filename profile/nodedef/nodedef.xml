@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <nodeDefs>
-  <nodeDef id="controller" nls="ctl">
+  <nodeDef id="controller" nls="controller">
     <sts>
       <st id="ST" editor="onoff" />
       <st id="GV0" editor="count" />
@@ -20,6 +20,11 @@
       <st id="GV0" editor="temperature_f" />
       <st id="GV1" editor="humidity_pct" />
       <st id="GV2" editor="voltage_v" />
+      <st id="GV3" editor="temperature_f" />
+      <st id="GV4" editor="vpd_kpa" />
+      <st id="GV5" editor="signal_dbm" />
+      <st id="GV6" editor="barometric_pressure" />
+      <st id="GV7" editor="heat_index_f" />
     </sts>
     <cmds>
       <sends />

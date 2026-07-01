@@ -8,8 +8,13 @@ ST-controller-GV0-NAME = Sensor Count
 ST-controller-GV1-NAME = Sample Count
 ST-sensor-ST-NAME = Sensor Online
 ST-sensor-GV0-NAME = Temperature (F)
-ST-sensor-GV1-NAME = Humidity (%)
+ST-sensor-GV1-NAME = Relative Humidity (%)
 ST-sensor-GV2-NAME = Battery (V)
+ST-sensor-GV3-NAME = Dew Point (F)
+ST-sensor-GV4-NAME = VPD (kPa)
+ST-sensor-GV5-NAME = Signal (dBm)
+ST-sensor-GV6-NAME = Barometric
+ST-sensor-GV7-NAME = Heat Index (F)
 
 CMD-controller-QUERY-NAME = Query
 
