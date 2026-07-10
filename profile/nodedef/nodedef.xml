@@ -5,6 +5,7 @@
       <st id="ST" editor="onoff" />
       <st id="GV0" editor="count" />
       <st id="GV1" editor="count" />
+      <st id="GV2" editor="count" />
     </sts>
     <cmds>
       <sends />

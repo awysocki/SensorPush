@@ -27,6 +27,12 @@ Child node metrics currently include:
 - VPD (kPa)
 - Signal (dBm, when provided by API)
 
+Controller metrics include:
+
+- Sensor Count
+- Sample Count
+- Stale Sensor Count
+
 ## Polling Strategy
 
 SensorPush API documentation notes requests should not exceed once per minute.
@@ -50,6 +56,12 @@ Set credentials and behavior using PG3 custom parameters (or environment variabl
 - `sensorpush_email` (required)
 - `sensorpush_password` (required)
 - `use_short_poll_updates` (`true`/`false`, default: `false`)
+- `sample_limit` (default: `1`)
+- `sensor_stale_hours` (default: `24`)
+- `ntfy_topic` (default: `sensorpush-alerts`)
+- `ntfy_server` (optional, default: `https://ntfy.sh`)
+- `ntfy_token` (optional bearer token for private ntfy topics)
+- `ntfy_notify_recovery` (`true`/`false`, default: `true`)
 
 In PG3 Admin, these are also published as typed fields on the configuration page.
 
@@ -64,10 +76,33 @@ Authentication mode:
 - `SENSORPUSH_EMAIL`
 - `SENSORPUSH_PASSWORD`
 - `SENSORPUSH_USE_SHORT_POLL_UPDATES`
+- `SENSORPUSH_SAMPLE_LIMIT`
+- `SENSOR_STALE_HOURS`
+- `NTFY_TOPIC`
+- `NTFY_SERVER`
+- `NTFY_TOKEN`
+- `NTFY_NOTIFY_RECOVERY`
 
 Backward compatibility: legacy `SENSORPUSH_ACCOUNT_TOKEN` is still accepted.
 
 Custom parameters take precedence over environment variables.
+
+## Stale Sensor Alerts
+
+This node server can alert when a sensor appears to have stopped reporting.
+
+- A sensor is considered stale when its latest sample time is older than `sensor_stale_hours`.
+- If the sample payload has no timestamp field, receipt of a sample during a poll is treated as fresh.
+- `ST` for that sensor is set to `Disconnected` while stale.
+- `GV2` on the controller reports total stale sensors.
+- ntfy notifications are sent once when stale is detected, and optionally once on recovery.
+
+Example custom params for a 24-hour stale alert to ntfy:
+
+- `sensor_stale_hours=24`
+- `ntfy_topic=my-home-sensors`
+- `ntfy_server=https://ntfy.sh`
+- `ntfy_notify_recovery=true`
 
 ## Local Development
 

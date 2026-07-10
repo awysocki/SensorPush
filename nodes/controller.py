@@ -6,6 +6,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable
 
+import requests
 import udi_interface
 from udi_interface import Node
 
@@ -24,6 +25,7 @@ class SensorPushController(Node):
         {"driver": "ST", "value": 0, "uom": 25},
         {"driver": "GV0", "value": 0, "uom": 56},
         {"driver": "GV1", "value": 0, "uom": 56},
+        {"driver": "GV2", "value": 0, "uom": 56},
     ]
 
     commands = {
@@ -37,6 +39,8 @@ class SensorPushController(Node):
         self._client: SensorPushClient | None = None
         self._last_poll_utc: datetime | None = None
         self._typed_params_data: Dict[str, Any] = {}
+        self._sensor_last_seen_utc: Dict[str, datetime] = {}
+        self._sensor_stale_alerted: set[str] = set()
         self._reload_config()
 
     @classmethod
@@ -156,16 +160,160 @@ class SensorPushController(Node):
 
         return heat_index
 
-    def _sync_sensor_nodes(self, sensors: Dict[str, Any], sample_map: Dict[str, Any]) -> None:
+    @staticmethod
+    def _parse_timestamp_utc(value: Any) -> datetime | None:
+        if value is None:
+            return None
+
+        if isinstance(value, (int, float)):
+            epoch = float(value)
+            if epoch > 1_000_000_000_000:
+                epoch = epoch / 1000.0
+            try:
+                return datetime.fromtimestamp(epoch, tz=timezone.utc)
+            except (OverflowError, OSError, ValueError):
+                return None
+
+        text = str(value).strip()
+        if not text:
+            return None
+
+        try:
+            numeric = float(text)
+            if numeric > 1_000_000_000_000:
+                numeric = numeric / 1000.0
+            return datetime.fromtimestamp(numeric, tz=timezone.utc)
+        except (OverflowError, OSError, TypeError, ValueError):
+            pass
+
+        try:
+            normalized = text.replace("Z", "+00:00")
+            parsed = datetime.fromisoformat(normalized)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        except ValueError:
+            return None
+
+    def _extract_sample_time_utc(self, sample: Dict[str, Any]) -> datetime | None:
+        timestamp_keys = (
+            "observed",
+            "timestamp",
+            "time",
+            "sampleTime",
+            "recorded",
+            "date",
+            "created",
+            "updatedAt",
+            "lastObserved",
+        )
+        for key in timestamp_keys:
+            if key in sample:
+                parsed = self._parse_timestamp_utc(sample.get(key))
+                if parsed is not None:
+                    return parsed
+        return None
+
+    def _is_sensor_stale(self, last_seen_utc: datetime | None, now_utc: datetime) -> bool:
+        if last_seen_utc is None:
+            return False
+        if self._runtime_config.sensor_stale_hours <= 0:
+            return False
+        age_seconds = (now_utc - last_seen_utc).total_seconds()
+        return age_seconds >= (self._runtime_config.sensor_stale_hours * 3600.0)
+
+    def _notify_ntfy(self, title: str, message: str, tags: str) -> None:
+        topic = self._runtime_config.ntfy_topic.strip()
+        if not topic:
+            return
+
+        base_url = self._runtime_config.ntfy_server.strip() or "https://ntfy.sh"
+        publish_url = f"{base_url.rstrip('/')}/{topic}"
+        headers = {
+            "Title": title,
+            "Tags": tags,
+        }
+        if self._runtime_config.ntfy_token:
+            headers["Authorization"] = f"Bearer {self._runtime_config.ntfy_token}"
+
+        try:
+            response = requests.post(
+                publish_url,
+                data=message.encode("utf-8"),
+                headers=headers,
+                timeout=10,
+            )
+            if response.status_code >= 400:
+                LOGGER.warning(
+                    "ntfy publish failed: status=%s body=%s",
+                    response.status_code,
+                    response.text,
+                )
+        except Exception:
+            LOGGER.exception("Failed to publish ntfy notification")
+
+    def _handle_stale_state(
+        self,
+        sensor_id: str,
+        sensor_name: str,
+        stale: bool,
+        last_seen_utc: datetime,
+        now_utc: datetime,
+    ) -> None:
+        age_hours = (now_utc - last_seen_utc).total_seconds() / 3600.0
+        alert_key = sensor_id
+
+        if stale and alert_key not in self._sensor_stale_alerted:
+            self._sensor_stale_alerted.add(alert_key)
+            LOGGER.warning(
+                "Sensor appears stale: %s (%s) last_seen_utc=%s age_hours=%.2f threshold_hours=%.2f",
+                sensor_name,
+                sensor_id,
+                last_seen_utc.isoformat(),
+                age_hours,
+                self._runtime_config.sensor_stale_hours,
+            )
+            self._notify_ntfy(
+                title="Sensor stale",
+                message=(
+                    f"Sensor '{sensor_name}' ({sensor_id}) has not updated for {age_hours:.1f}h "
+                    f"(threshold {self._runtime_config.sensor_stale_hours:.1f}h)."
+                ),
+                tags="warning,sensorpush",
+            )
+            return
+
+        if not stale and alert_key in self._sensor_stale_alerted:
+            self._sensor_stale_alerted.remove(alert_key)
+            LOGGER.info(
+                "Sensor recovered from stale state: %s (%s)",
+                sensor_name,
+                sensor_id,
+            )
+            if self._runtime_config.ntfy_notify_recovery:
+                self._notify_ntfy(
+                    title="Sensor recovered",
+                    message=f"Sensor '{sensor_name}' ({sensor_id}) is reporting again.",
+                    tags="white_check_mark,sensorpush",
+                )
+
+    def _sync_sensor_nodes(
+        self,
+        sensors: Dict[str, Any],
+        sample_map: Dict[str, Any],
+        poll_utc: datetime,
+    ) -> int:
         active_addresses: set[str] = set()
+        stale_count = 0
 
         for sensor_id, sensor_data in sensors.items():
-            address = self._sensor_address(str(sensor_id))
+            sensor_id_text = str(sensor_id)
+            address = self._sensor_address(sensor_id_text)
             active_addresses.add(address)
 
-            sensor_name = str(sensor_id)
+            sensor_name = sensor_id_text
             if isinstance(sensor_data, dict):
-                sensor_name = str(sensor_data.get("name") or sensor_id)
+                sensor_name = str(sensor_data.get("name") or sensor_id_text)
 
             node = self._get_node(address)
             if not isinstance(node, SensorPushSensorNode):
@@ -183,6 +331,30 @@ class SensorPushController(Node):
                 LOGGER.debug("Sensor metadata keys for %s: %s", sensor_id, sorted(sensor_data.keys()))
             if latest_sample:
                 LOGGER.debug("Latest sample keys for %s: %s", sensor_id, sorted(latest_sample.keys()))
+
+            last_seen_utc = self._sensor_last_seen_utc.get(sensor_id_text)
+            parsed_sample_time = self._extract_sample_time_utc(latest_sample) if latest_sample else None
+            if parsed_sample_time is not None:
+                last_seen_utc = parsed_sample_time
+            elif latest_sample:
+                # If timestamp field is absent but we got a sample payload, treat this poll as fresh.
+                last_seen_utc = poll_utc
+            elif last_seen_utc is None:
+                # First observation with no samples should not immediately alert as stale.
+                last_seen_utc = poll_utc
+
+            self._sensor_last_seen_utc[sensor_id_text] = last_seen_utc
+            is_stale = self._is_sensor_stale(last_seen_utc, poll_utc)
+            if is_stale:
+                stale_count += 1
+
+            self._handle_stale_state(
+                sensor_id=sensor_id_text,
+                sensor_name=sensor_name,
+                stale=is_stale,
+                last_seen_utc=last_seen_utc,
+                now_utc=poll_utc,
+            )
 
             battery_v = None
             if isinstance(sensor_data, dict):
@@ -214,7 +386,7 @@ class SensorPushController(Node):
                 heat_index_f = self._calc_heat_index_f(temperature_f, humidity_pct)
 
             node.set_metrics(
-                connected=True,
+                connected=not is_stale,
                 temperature_f=temperature_f,
                 humidity_pct=humidity_pct,
                 battery_v=battery_v,
@@ -239,7 +411,15 @@ class SensorPushController(Node):
             except Exception:
                 LOGGER.exception("Failed deleting stale child sensor node: %s", address)
 
-    def start(self) -> None:
+        active_sensor_ids = {str(sensor_id) for sensor_id in sensors.keys()}
+        for stale_sensor_id in list(self._sensor_last_seen_utc.keys()):
+            if stale_sensor_id not in active_sensor_ids:
+                self._sensor_last_seen_utc.pop(stale_sensor_id, None)
+                self._sensor_stale_alerted.discard(stale_sensor_id)
+
+        return stale_count
+
+    def start(self, command: Dict[str, Any] | None = None) -> None:
         LOGGER.info(
             "SensorPushController started. update_mode=%s shortPoll=60s longPoll=300s",
             "short" if self._runtime_config.use_short_poll_updates else "long",
@@ -294,12 +474,14 @@ class SensorPushController(Node):
         has_account_token = bool(self._runtime_config.account_token)
         auth_decision = "account_token_exchange" if has_account_token else "none"
         LOGGER.debug(
-            "Config reload: auth_decision=%s account_token_present=%s email_present=%s short_poll=%s sample_limit=%s",
+            "Config reload: auth_decision=%s account_token_present=%s email_present=%s short_poll=%s sample_limit=%s stale_hours=%.2f ntfy=%s",
             auth_decision,
             has_account_token,
             bool(self._runtime_config.email),
             self._runtime_config.use_short_poll_updates,
             self._runtime_config.sample_limit,
+            self._runtime_config.sensor_stale_hours,
+            bool(self._runtime_config.ntfy_topic),
         )
 
         if has_account_token:
@@ -344,7 +526,12 @@ class SensorPushController(Node):
                 sample_map = {}
             LOGGER.debug("SensorPush samples call complete: sensor_groups=%s", len(sample_map))
 
-            self._sync_sensor_nodes(sensors=sensors, sample_map=sample_map)
+            poll_utc = datetime.now(timezone.utc)
+            stale_count = self._sync_sensor_nodes(
+                sensors=sensors,
+                sample_map=sample_map,
+                poll_utc=poll_utc,
+            )
 
             total_samples = 0
             if isinstance(sample_map, dict):
@@ -355,14 +542,16 @@ class SensorPushController(Node):
             self.setDriver("ST", 1)
             self.setDriver("GV0", len(sensor_ids))
             self.setDriver("GV1", total_samples)
+            self.setDriver("GV2", stale_count)
             self.reportDrivers()
 
-            self._last_poll_utc = datetime.now(timezone.utc)
+            self._last_poll_utc = poll_utc
             LOGGER.info(
-                "SensorPush %s update complete: sensors=%s samples=%s",
+                "SensorPush %s update complete: sensors=%s samples=%s stale=%s",
                 reason,
                 len(sensor_ids),
                 total_samples,
+                stale_count,
             )
         except SensorPushApiError as err:
             self.setDriver("ST", 0)
@@ -371,13 +560,23 @@ class SensorPushController(Node):
             self.setDriver("ST", 0)
             LOGGER.exception("Unexpected error during %s poll", reason)
 
-    def shortPoll(self) -> None:
+    def shortPoll(self, command: Dict[str, Any] | None = None) -> None:
         if self._runtime_config.use_short_poll_updates:
             self._run_poll_cycle("shortPoll")
 
-    def longPoll(self) -> None:
+    def longPoll(self, command: Dict[str, Any] | None = None) -> None:
         if not self._runtime_config.use_short_poll_updates:
             self._run_poll_cycle("longPoll")
+
+    def poll(self, command: Dict[str, Any] | None = None) -> None:
+        if self._runtime_config.use_short_poll_updates:
+            self.shortPoll(command)
+        else:
+            self.longPoll(command)
+
+    def stop(self, command: Dict[str, Any] | None = None) -> None:
+        LOGGER.info("SensorPushController stopping")
+        self.setDriver("ST", 0)
 
     def query(self, command: Dict[str, Any] | None = None) -> bool:
         self._run_poll_cycle("query")

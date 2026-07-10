@@ -6,6 +6,7 @@ ND-sensor-ICON = GenericSensor
 ST-controller-ST-NAME = Cloud Connection
 ST-controller-GV0-NAME = Sensor Count
 ST-controller-GV1-NAME = Sample Count
+ST-controller-GV2-NAME = Stale Sensor Count
 ST-sensor-ST-NAME = Sensor Online
 ST-sensor-GV0-NAME = Temperature (F)
 ST-sensor-GV1-NAME = Relative Humidity (%)
