@@ -61,7 +61,7 @@ Set credentials and behavior using PG3 custom parameters (or environment variabl
 - `ntfy_topic` (default: `sensorpush-alerts`)
 - `ntfy_server` (optional, default: `https://ntfy.sh`)
 - `ntfy_token` (optional bearer token for private ntfy topics)
-- `ntfy_notify_recovery` (`true`/`false`, default: `true`)
+- `sensor_stale_notify_recovery` (`true`/`false`, default: `true`)
 
 In PG3 Admin, these are also published as typed fields on the configuration page.
 
@@ -81,7 +81,7 @@ Authentication mode:
 - `NTFY_TOPIC`
 - `NTFY_SERVER`
 - `NTFY_TOKEN`
-- `NTFY_NOTIFY_RECOVERY`
+- `SENSOR_STALE_NOTIFY_RECOVERY`
 
 Backward compatibility: legacy `SENSORPUSH_ACCOUNT_TOKEN` is still accepted.
 
@@ -102,7 +102,7 @@ Example custom params for a 24-hour stale alert to ntfy:
 - `sensor_stale_hours=24`
 - `ntfy_topic=my-home-sensors`
 - `ntfy_server=https://ntfy.sh`
-- `ntfy_notify_recovery=true`
+- `sensor_stale_notify_recovery=true`
 
 ## Local Development
 

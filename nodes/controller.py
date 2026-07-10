@@ -290,7 +290,7 @@ class SensorPushController(Node):
                 sensor_name,
                 sensor_id,
             )
-            if self._runtime_config.ntfy_notify_recovery:
+            if self._runtime_config.sensor_stale_notify_recovery:
                 self._notify_ntfy(
                     title="Sensor recovered",
                     message=f"Sensor '{sensor_name}' ({sensor_id}) is reporting again.",

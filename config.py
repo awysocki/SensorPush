@@ -42,7 +42,7 @@ class RuntimeConfig:
     ntfy_topic: str = ""
     ntfy_server: str = "https://ntfy.sh"
     ntfy_token: str = ""
-    ntfy_notify_recovery: bool = True
+    sensor_stale_notify_recovery: bool = True
 
     @classmethod
     def from_sources(
@@ -92,10 +92,10 @@ class RuntimeConfig:
         ).strip()
         ntfy_server = str(custom.get("ntfy_server") or environ.get("NTFY_SERVER") or "https://ntfy.sh").strip()
         ntfy_token = str(custom.get("ntfy_token") or environ.get("NTFY_TOKEN") or "").strip()
-        ntfy_notify_recovery = _as_bool(
-            custom.get("ntfy_notify_recovery")
-            if "ntfy_notify_recovery" in custom
-            else environ.get("NTFY_NOTIFY_RECOVERY"),
+        sensor_stale_notify_recovery = _as_bool(
+            custom.get("sensor_stale_notify_recovery")
+            if "sensor_stale_notify_recovery" in custom
+            else environ.get("SENSOR_STALE_NOTIFY_RECOVERY"),
             default=True,
         )
 
@@ -108,5 +108,5 @@ class RuntimeConfig:
             ntfy_topic=ntfy_topic,
             ntfy_server=ntfy_server,
             ntfy_token=ntfy_token,
-            ntfy_notify_recovery=ntfy_notify_recovery,
+            sensor_stale_notify_recovery=sensor_stale_notify_recovery,
         )

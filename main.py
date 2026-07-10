@@ -111,7 +111,7 @@ def _register_admin_params(polyglot: udi_interface.Interface) -> None:
                 "isDelete": True,
             },
             {
-                "name": "ntfy_notify_recovery",
+                "name": "sensor_stale_notify_recovery",
                 "title": "Notify On Recovery",
                 "desc": "Send ntfy when a stale sensor starts reporting again (default true).",
                 "default": "1",
