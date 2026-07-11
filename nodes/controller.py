@@ -425,6 +425,14 @@ class SensorPushController(Node):
             "SensorPushController started. update_mode=%s shortPoll=60s longPoll=300s",
             "short" if self._runtime_config.use_short_poll_updates else "long",
         )
+        startup_params = self._get_custom_params()
+        startup_topic = str(startup_params.get("ntfy_topic") or "").strip()
+        if startup_topic:
+            self._notify_ntfy(
+                title="SensorPush started",
+                message="SensorPush node server started and is running.",
+                tags="rocket,sensorpush",
+            )
         self._run_poll_cycle("startup")
 
     def custom_params_changed(self, params: Dict[str, Any] | None = None) -> None:
