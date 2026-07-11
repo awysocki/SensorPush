@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 from datetime import datetime, timezone
@@ -431,7 +432,35 @@ class SensorPushController(Node):
         merged_custom_params = None
         if isinstance(params, dict):
             merged_custom_params = self._get_custom_params()
-            for key, value in params.items():
+            payload: Dict[str, Any] = {}
+
+            direct_payload = params.get("customparams")
+            if isinstance(direct_payload, dict):
+                payload = dict(direct_payload)
+            elif isinstance(direct_payload, str):
+                try:
+                    decoded = json.loads(direct_payload)
+                    if isinstance(decoded, dict):
+                        payload = decoded
+                except Exception:
+                    payload = {}
+
+            if not payload and params.get("key") == "customparams":
+                raw_value = params.get("value")
+                if isinstance(raw_value, dict):
+                    payload = dict(raw_value)
+                elif isinstance(raw_value, str):
+                    try:
+                        decoded = json.loads(raw_value)
+                        if isinstance(decoded, dict):
+                            payload = decoded
+                    except Exception:
+                        payload = {}
+
+            if not payload:
+                payload = dict(params)
+
+            for key, value in payload.items():
                 merged_custom_params[str(key)] = str(value)
 
         self._reload_config(merged_custom_params)
@@ -447,10 +476,14 @@ class SensorPushController(Node):
             "short" if self._runtime_config.use_short_poll_updates else "long",
             self._runtime_config.sample_limit,
         )
+        self._run_poll_cycle("config_update")
 
     def custom_typed_data_changed(self, params: Dict[str, Any] | None = None) -> None:
         if isinstance(params, dict):
             self._typed_params_data = dict(params)
+        if not self._typed_params_data:
+            LOGGER.debug("Ignoring empty custom typed params event")
+            return
         self._reload_config()
         LOGGER.info("Custom typed params updated from PG3 Admin form")
         self._run_poll_cycle("config_update")

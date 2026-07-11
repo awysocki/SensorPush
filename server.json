@@ -8,7 +8,7 @@
   "longPoll": 300,
   "restart": true,
   "interface": "mqtt",
-  "version": "2026.7.007",
+  "version": "2026.7.012",
   "customparams": [
     {
       "name": "sensorpush_email",
@@ -44,10 +44,18 @@
       "name": "sensor_stale_hours",
       "title": "Sensor Stale Hours",
       "desc": "Alert when no fresh sample is seen for this many hours (default 24).",
-      "default": "24",
+      "default": "1",
       "isRequired": false,
       "isDelete": true
     },
+    {
+      "name": "sensor_stale_notify_recovery",
+      "title": "Notify On Recovery",
+      "desc": "Send ntfy when a stale sensor starts reporting again (default true).",
+      "default": "1",
+      "isRequired": false,
+      "isDelete": true
+    },    
     {
       "name": "ntfy_topic",
       "title": "ntfy Topic",
@@ -70,20 +78,12 @@
       "desc": "Optional bearer token for private ntfy topics.",
       "isRequired": false,
       "isDelete": true
-    },
-    {
-      "name": "sensor_stale_notify_recovery",
-      "title": "Notify On Recovery",
-      "desc": "Send ntfy when a stale sensor starts reporting again (default true).",
-      "default": "1",
-      "isRequired": false,
-      "isDelete": true
     }
   ],
   "credits": [
     {
       "title": "SensorPush",
-      "version": "2026.7.007"
+      "version": "2026.7.012"
     }
   ],
   "profile_version": "3",
