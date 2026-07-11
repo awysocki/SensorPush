@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
 import udi_interface
 from nodes.controller import SensorPushController
@@ -45,82 +47,30 @@ def _set_mqtt_logger_silent() -> None:
     logging.getLogger("udi_interface.interface").setLevel(logging.WARNING)
 
 
-def _register_admin_params(polyglot: udi_interface.Interface) -> None:
-    typed_params = udi_interface.Custom(polyglot, "customtypedparams")
-    typed_params.load(
-        [
-            {
-                "name": "sensorpush_email",
-                "title": "SensorPush Email",
-                "desc": "Required SensorPush account email.",
-                "isRequired": True,
-                "isDelete": True,
-            },
-            {
-                "name": "sensorpush_password",
-                "title": "SensorPush Password",
-                "desc": "Required SensorPush account password.",
-                "isRequired": True,
-                "isDelete": True,
-            },
-            {
-                "name": "use_short_poll_updates",
-                "title": "Use Short Poll Updates",
-                "desc": "Default is false (No/0): set true for 1-minute test updates; false for 5-minute production updates.",
-                "default": "0",
-                "isRequired": False,
-                "isDelete": True,
-            },
-            {
-                "name": "sample_limit",
-                "title": "Sample Limit",
-                "desc": "How many samples to request per sensor (default 1).",
-                "default": "1",
-                "isRequired": False,
-                "isDelete": True,
-            },
-            {
-                "name": "sensor_stale_hours",
-                "title": "Sensor Stale Hours",
-                "desc": "Alert when no fresh sample is seen for this many hours (default 24).",
-                "default": "24",
-                "isRequired": False,
-                "isDelete": True,
-            },
-            {
-                "name": "ntfy_topic",
-                "title": "ntfy Topic",
-                "desc": "Optional: set to enable push notifications via ntfy (example: my-home-sensors).",
-                "default": "sensorpush-alerts",
-                "isRequired": False,
-                "isDelete": True,
-            },
-            {
-                "name": "ntfy_server",
-                "title": "ntfy Server URL",
-                "desc": "Optional: ntfy server URL (default https://ntfy.sh).",
-                "default": "https://ntfy.sh",
-                "isRequired": False,
-                "isDelete": True,
-            },
-            {
-                "name": "ntfy_token",
-                "title": "ntfy Access Token",
-                "desc": "Optional bearer token for private ntfy topics.",
-                "isRequired": False,
-                "isDelete": True,
-            },
-            {
-                "name": "sensor_stale_notify_recovery",
-                "title": "Notify On Recovery",
-                "desc": "Send ntfy when a stale sensor starts reporting again (default true).",
-                "default": "1",
-                "isRequired": False,
-                "isDelete": True,
-            },
-        ],
-        True,
-    )
+def _register_admin_params_from_manifest(polyglot: udi_interface.Interface) -> None:
+    manifest_path = Path(__file__).with_name("server.json")
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        LOGGER.exception("Unable to read custom params from %s", manifest_path)
+        return
+
+    custom_params = manifest.get("customparams")
+    if not isinstance(custom_params, list):
+        LOGGER.warning("server.json does not define customparams")
+        return
+
+    custom_values: dict[str, str] = {}
+    for entry in custom_params:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name", "")).strip()
+        if not name:
+            continue
+        custom_values[name] = str(entry.get("default", ""))
+
+    custom = udi_interface.Custom(polyglot, "customparams")
+    custom.load(custom_values, True)
 
 
 def main() -> None:
@@ -128,7 +78,7 @@ def main() -> None:
     polyglot.start()
     _dedupe_all_loggers()
     _set_mqtt_logger_silent()
-    _register_admin_params(polyglot)
+    _register_admin_params_from_manifest(polyglot)
     polyglot.setCustomParamsDoc()
 
     controller = SensorPushController(polyglot)

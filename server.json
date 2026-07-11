@@ -1,6 +1,6 @@
 {
-  "name": "SensorPush Polyglot",
-  "docs": "https://github.com/awysocki/SensorPushPolyglot",
+  "name": "SensorPush",
+  "docs": "https://github.com/awysocki/SensorPush",
   "type": "python3",
   "executable": "main.py",
   "install": "install.sh",
@@ -8,14 +8,85 @@
   "longPoll": 300,
   "restart": true,
   "interface": "mqtt",
-  "version": "2026.7.005",
+  "version": "2026.7.007",
+  "customparams": [
+    {
+      "name": "sensorpush_email",
+      "title": "SensorPush Email",
+      "desc": "Required SensorPush account email.",
+      "isRequired": true,
+      "isDelete": true
+    },
+    {
+      "name": "sensorpush_password",
+      "title": "SensorPush Password",
+      "desc": "Required SensorPush account password.",
+      "isRequired": true,
+      "isDelete": true
+    },
+    {
+      "name": "use_short_poll_updates",
+      "title": "Use Short Poll Updates",
+      "desc": "Default is false (No/0): set true for 1-minute test updates; false for 5-minute production updates.",
+      "default": "0",
+      "isRequired": false,
+      "isDelete": true
+    },
+    {
+      "name": "sample_limit",
+      "title": "Sample Limit",
+      "desc": "How many samples to request per sensor (default 1).",
+      "default": "1",
+      "isRequired": false,
+      "isDelete": true
+    },
+    {
+      "name": "sensor_stale_hours",
+      "title": "Sensor Stale Hours",
+      "desc": "Alert when no fresh sample is seen for this many hours (default 24).",
+      "default": "24",
+      "isRequired": false,
+      "isDelete": true
+    },
+    {
+      "name": "ntfy_topic",
+      "title": "ntfy Topic",
+      "desc": "Optional: set to enable push notifications via ntfy (example: my-home-sensors).",
+      "default": "sensorpush-alerts",
+      "isRequired": false,
+      "isDelete": true
+    },
+    {
+      "name": "ntfy_server",
+      "title": "ntfy Server URL",
+      "desc": "Optional: ntfy server URL (default https://ntfy.sh).",
+      "default": "https://ntfy.sh",
+      "isRequired": false,
+      "isDelete": true
+    },
+    {
+      "name": "ntfy_token",
+      "title": "ntfy Access Token",
+      "desc": "Optional bearer token for private ntfy topics.",
+      "isRequired": false,
+      "isDelete": true
+    },
+    {
+      "name": "sensor_stale_notify_recovery",
+      "title": "Notify On Recovery",
+      "desc": "Send ntfy when a stale sensor starts reporting again (default true).",
+      "default": "1",
+      "isRequired": false,
+      "isDelete": true
+    }
+  ],
   "credits": [
     {
-      "title": "SensorPush Polyglot",
-      "version": "2026.7.005"
+      "title": "SensorPush",
+      "version": "2026.7.007"
     }
   ],
   "profile_version": "3",
-  "description": "PG3 Polyglot for SensorPush cloud API with configurable short/long poll update mode.",
-  "id": "sensorpushpolyglot"
+  "description": "PG3 for SensorPush cloud API with configurable short/long poll update mode.",
+  "id": "sensorpush"
 }

@@ -1,6 +1,6 @@
-# SensorPush Polyglot for eISY / PG3
+# SensorPush for eISY / PG3
 
-Starter PG3 Polyglot node server for polling SensorPush Gateway Cloud API.
+Starter PG3 node server for polling SensorPush Gateway Cloud API.
 
 ## Current Scope
 
@@ -57,19 +57,18 @@ Set credentials and behavior using PG3 custom parameters (or environment variabl
 - `sensorpush_password` (required)
 - `use_short_poll_updates` (`true`/`false`, default: `false`)
 - `sample_limit` (default: `1`)
-- `sensor_stale_hours` (default: `24`)
-- `ntfy_topic` (default: `sensorpush-alerts`)
+- `sensor_stale_hours` (default: `1`)
+- `ntfy_topic` (default: ``)
 - `ntfy_server` (optional, default: `https://ntfy.sh`)
 - `ntfy_token` (optional bearer token for private ntfy topics)
 - `sensor_stale_notify_recovery` (`true`/`false`, default: `true`)
 
-In PG3 Admin, these are also published as typed fields on the configuration page.
+The typed PG3 admin fields are defined in [server.json](server.json) and loaded at startup by [main.py](main.py).
 
 Authentication mode:
 
 - Email + password: set `sensorpush_email` and `sensorpush_password`.
 - The node server exchanges credentials for OAuth access token before API calls.
-- Backward compatibility: legacy `sensorpush_account_token` is still accepted.
 
 ### Environment Variables
 
@@ -78,12 +77,11 @@ Authentication mode:
 - `SENSORPUSH_USE_SHORT_POLL_UPDATES`
 - `SENSORPUSH_SAMPLE_LIMIT`
 - `SENSOR_STALE_HOURS`
+- `SENSOR_STALE_NOTIFY_RECOVERY`
 - `NTFY_TOPIC`
 - `NTFY_SERVER`
 - `NTFY_TOKEN`
-- `SENSOR_STALE_NOTIFY_RECOVERY`
 
-Backward compatibility: legacy `SENSORPUSH_ACCOUNT_TOKEN` is still accepted.
 
 Custom parameters take precedence over environment variables.
 
@@ -100,9 +98,9 @@ This node server can alert when a sensor appears to have stopped reporting.
 Example custom params for a 24-hour stale alert to ntfy:
 
 - `sensor_stale_hours=24`
-- `ntfy_topic=my-home-sensors`
-- `ntfy_server=https://ntfy.sh`
 - `sensor_stale_notify_recovery=true`
+- `ntfy_topic=my-home-sensors-0000`
+- `ntfy_server=https://ntfy.sh`
 
 ## Local Development
 
@@ -117,7 +115,7 @@ python main.py
 
 Planned GitHub remote:
 
-- https://github.com/awysocki/SensorPushPolyglot.git
+- https://github.com/awysocki/SensorPush.git
 
 ## Next Steps
 

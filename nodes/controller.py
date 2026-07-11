@@ -427,7 +427,21 @@ class SensorPushController(Node):
         self._run_poll_cycle("startup")
 
     def custom_params_changed(self, params: Dict[str, Any] | None = None) -> None:
-        self._reload_config()
+        previous_topic = self._runtime_config.ntfy_topic.strip()
+        merged_custom_params = None
+        if isinstance(params, dict):
+            merged_custom_params = self._get_custom_params()
+            for key, value in params.items():
+                merged_custom_params[str(key)] = str(value)
+
+        self._reload_config(merged_custom_params)
+        current_topic = self._runtime_config.ntfy_topic.strip()
+        if previous_topic != current_topic and current_topic:
+            self._notify_ntfy(
+                title="SensorPush configuration updated",
+                message=f"ntfy topic updated to '{current_topic}' for SensorPush.",
+                tags="gear,sensorpush",
+            )
         LOGGER.info(
             "Custom params updated. update_mode=%s sample_limit=%s",
             "short" if self._runtime_config.use_short_poll_updates else "long",
@@ -467,8 +481,9 @@ class SensorPushController(Node):
                 normalized[str(k)] = str(v)
         return normalized
 
-    def _reload_config(self) -> None:
-        custom_params = self._get_custom_params()
+    def _reload_config(self, custom_params: Dict[str, str] | None = None) -> None:
+        if custom_params is None:
+            custom_params = self._get_custom_params()
         self._runtime_config = RuntimeConfig.from_sources(custom_params, os.environ)
 
         has_account_token = bool(self._runtime_config.account_token)
