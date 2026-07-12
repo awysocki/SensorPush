@@ -59,10 +59,6 @@ def main() -> None:
     if stop_event is not None:
         polyglot.subscribe(stop_event, controller.stop)
 
-    custom_params_event = getattr(polyglot, "CUSTOMPARAMS", None)
-    if custom_params_event is not None:
-        polyglot.subscribe(custom_params_event, controller.custom_params_changed)
-
     custom_typed_data_event = getattr(polyglot, "CUSTOMTYPEDDATA", None)
     if custom_typed_data_event is not None:
         polyglot.subscribe(custom_typed_data_event, controller.custom_typed_data_changed)

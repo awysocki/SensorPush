@@ -31,7 +31,7 @@ class SensorPushController(Node):
         {"name": "sample_limit", "title": "Sample Limit", "desc": "How many samples to request per sensor (default 1).", "isRequired": False, "defaultValue": "1"},
         {"name": "sensor_stale_hours", "title": "Sensor Stale Hours", "desc": "Alert when no fresh sample is seen for this many hours (default 1).", "isRequired": False, "defaultValue": "1"},
         {"name": "sensor_stale_notify_recovery", "title": "Notify On Recovery", "desc": "Send ntfy when a stale sensor starts reporting again (default 1).", "isRequired": False, "defaultValue": "1"},
-        {"name": "ntfy_topic", "title": "ntfy Topic", "desc": "Optional: set to enable push notifications via ntfy.", "isRequired": False, "defaultValue": "sensorpush-alerts"},
+        {"name": "ntfy_topic", "title": "ntfy Topic", "desc": "Optional: set to enable push notifications via ntfy.", "isRequired": False, "defaultValue": ""},
         {"name": "ntfy_server", "title": "ntfy Server URL", "desc": "Optional: ntfy server URL.", "isRequired": False, "defaultValue": "https://ntfy.sh"},
         {"name": "ntfy_token", "title": "ntfy Access Token", "desc": "Optional bearer token for private ntfy topics.", "isRequired": False, "defaultValue": ""},
     ]
@@ -57,6 +57,7 @@ class SensorPushController(Node):
         self._sensor_last_seen_utc: Dict[str, datetime] = {}
         self._sensor_stale_alerted: set[str] = set()
         self._gateway_defs_refreshed = False
+        self._startup_notified = False
 
         # Publish typed parameter schema so PG3 consistently renders the admin fields.
         self.typed_params = udi_interface.Custom(self.poly, "customtypedparams")
@@ -559,11 +560,7 @@ class SensorPushController(Node):
         config = getattr(self.poly, "polyConfig", None) or {}
         params: Dict[str, Any] = {}
 
-        raw_custom = config.get("customParams", {})
-        if isinstance(raw_custom, dict):
-            params.update(raw_custom)
-
-        for key in ("customtypedparams", "customTypedParams", "customTypedData", "customtypeddata"):
+        for key in ("customTypedData", "customtypeddata"):
             typed = config.get(key, {})
             if isinstance(typed, dict):
                 params.update(typed)
@@ -583,11 +580,29 @@ class SensorPushController(Node):
                 normalized[str(k)] = str(v)
         return normalized
 
-    def _merge_event_params(self, params: Dict[str, Any]) -> Dict[str, str]:
+    def _merge_typed_event_params(self, params: Dict[str, Any]) -> Dict[str, str]:
         merged = self._get_custom_params()
 
         payload: Dict[str, Any] = {}
-        for key in ("customparams", "customtypeddata", "customtypedparams"):
+
+        # Some PG3 paths pass the values directly on the event payload.
+        direct_keys = (
+            "sensorpush_email",
+            "sensorpush_password",
+            "sensorpush_account_token",
+            "use_short_poll_updates",
+            "sample_limit",
+            "sensor_stale_hours",
+            "sensor_stale_notify_recovery",
+            "ntfy_topic",
+            "ntfy_server",
+            "ntfy_token",
+        )
+        for key in direct_keys:
+            if key in params:
+                payload[key] = params.get(key)
+
+        for key in ("customtypeddata", "customTypedData"):
             raw = params.get(key)
             if isinstance(raw, dict):
                 payload.update(raw)
@@ -596,10 +611,6 @@ class SensorPushController(Node):
                     decoded = json.loads(raw)
                     if isinstance(decoded, dict):
                         payload.update(decoded)
-                    elif isinstance(decoded, list):
-                        for item in decoded:
-                            if isinstance(item, dict) and "name" in item:
-                                payload[str(item["name"])] = item.get("value", "")
                 except Exception:
                     pass
             elif isinstance(raw, list):
@@ -607,7 +618,20 @@ class SensorPushController(Node):
                     if isinstance(item, dict) and "name" in item:
                         payload[str(item["name"])] = item.get("value", "")
 
-        if not payload and params.get("key") in ("customparams", "customtypeddata", "customtypedparams"):
+        # Some PG3 events provide only {"value": "{...}"} without key metadata.
+        if not payload and "value" in params:
+            raw_value_any = params.get("value")
+            if isinstance(raw_value_any, dict):
+                payload.update(raw_value_any)
+            elif isinstance(raw_value_any, str):
+                try:
+                    decoded = json.loads(raw_value_any)
+                    if isinstance(decoded, dict):
+                        payload.update(decoded)
+                except Exception:
+                    pass
+
+        if not payload and params.get("key") in ("customtypeddata", "customTypedData"):
             raw_value = params.get("value")
             if isinstance(raw_value, dict):
                 payload.update(raw_value)
@@ -616,15 +640,22 @@ class SensorPushController(Node):
                     decoded = json.loads(raw_value)
                     if isinstance(decoded, dict):
                         payload.update(decoded)
-                    elif isinstance(decoded, list):
-                        for item in decoded:
-                            if isinstance(item, dict) and "name" in item:
-                                payload[str(item["name"])] = item.get("value", "")
                 except Exception:
                     pass
+            elif isinstance(raw_value, list):
+                for item in raw_value:
+                    if isinstance(item, dict) and "name" in item:
+                        payload[str(item["name"])] = item.get("value", "")
 
         for key, value in payload.items():
             merged[str(key)] = str(value)
+
+        LOGGER.debug(
+            "Merged typed params keys=%s email_present=%s token_present=%s",
+            sorted(merged.keys()),
+            bool(str(merged.get("sensorpush_email") or "").strip()),
+            bool(str(merged.get("sensorpush_password") or merged.get("sensorpush_account_token") or "").strip()),
+        )
         return merged
 
     def _reload_config(self, custom_params: Dict[str, str] | None = None) -> None:
@@ -657,29 +688,44 @@ class SensorPushController(Node):
                 message="SensorPush node server started and is running.",
                 tags="rocket,sensorpush",
             )
+            self._startup_notified = True
         self._run_poll_cycle("startup")
 
-    def custom_params_changed(self, params: Dict[str, Any] | None = None) -> None:
+    def custom_typed_data_changed(self, params: Dict[str, Any] | None = None) -> None:
+        previous_topic = self._runtime_config.ntfy_topic.strip()
         merged_custom_params = None
         if isinstance(params, dict):
-            merged_custom_params = self._merge_event_params(params)
+            merged_custom_params = self._merge_typed_event_params(params)
+            self._typed_params_data = dict(merged_custom_params)
 
         self._reload_config(merged_custom_params)
         if not self._ensure_required_params():
-            LOGGER.info("Custom params updated, waiting for required values")
+            LOGGER.info("Custom typed params updated, waiting for required values")
             return
 
         LOGGER.info(
-            "Custom params updated. update_mode=%s sample_limit=%s",
+            "Custom typed params updated. update_mode=%s sample_limit=%s",
             "short" if self._runtime_config.use_short_poll_updates else "long",
             self._runtime_config.sample_limit,
         )
-        self._run_poll_cycle("config_update")
 
-    def custom_typed_data_changed(self, params: Dict[str, Any] | None = None) -> None:
-        if isinstance(params, dict):
-            self._typed_params_data = dict(params)
-        self.custom_params_changed(params if isinstance(params, dict) else None)
+        current_topic = self._runtime_config.ntfy_topic.strip()
+        if current_topic and not self._startup_notified:
+            self._notify_ntfy(
+                title="SensorPush started",
+                message="SensorPush node server started and is running.",
+                tags="rocket,sensorpush",
+            )
+            self._startup_notified = True
+
+        if current_topic and previous_topic and previous_topic != current_topic:
+            self._notify_ntfy(
+                title="SensorPush configuration updated",
+                message=f"ntfy topic updated to '{current_topic}' for SensorPush.",
+                tags="gear,sensorpush",
+            )
+
+        self._run_poll_cycle("config_update")
 
     def _run_poll_cycle(self, reason: str) -> None:
         if not self._client:

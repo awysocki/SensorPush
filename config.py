@@ -88,7 +88,7 @@ class RuntimeConfig:
         ntfy_topic = str(
             custom.get("ntfy_topic")
             or environ.get("NTFY_TOPIC")
-            or "sensorpush-alerts"
+            or ""
         ).strip()
         ntfy_server = str(custom.get("ntfy_server") or environ.get("NTFY_SERVER") or "https://ntfy.sh").strip()
         ntfy_token = str(custom.get("ntfy_token") or environ.get("NTFY_TOKEN") or "").strip()
