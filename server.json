@@ -8,26 +8,71 @@
   "longPoll": 300,
   "restart": true,
   "interface": "mqtt",
-  "version": "2026.7.021",
+  "version": "2026.7.030",
   "discover": true,
   "oauth": false,
   "status_node": "controller",
   "status_driver": "ST",
-  "customparams": {
-    "sensorpush_email": "",
-    "sensorpush_password": "",
-    "use_short_poll_updates": "0",
-    "sample_limit": "1",
-    "sensor_stale_hours": "1",
-    "sensor_stale_notify_recovery": "1",
-    "ntfy_topic": "",
-    "ntfy_server": "https://ntfy.sh",
-    "ntfy_token": ""
-  },
+  "customtypedparams": [
+    {
+      "name": "sensorpush_email",
+      "title": "SensorPush Email",
+      "desc": "Required SensorPush account email.",
+      "isRequired": true
+    },
+    {
+      "name": "sensorpush_password",
+      "title": "SensorPush Password",
+      "desc": "Required SensorPush account password.",
+      "isRequired": true
+    },
+    {
+      "name": "use_short_poll_updates",
+      "title": "Use Short Poll Updates",
+      "desc": "Default 0: set 1 for 1-minute test updates.",
+      "isRequired": false
+    },
+    {
+      "name": "sample_limit",
+      "title": "Sample Limit",
+      "desc": "How many samples to request per sensor (default 1).",
+      "isRequired": false
+    },
+    {
+      "name": "sensor_stale_hours",
+      "title": "Sensor Stale Hours",
+      "desc": "Alert when no fresh sample is seen for this many hours (default 1).",
+      "isRequired": false
+    },
+    {
+      "name": "sensor_stale_notify_recovery",
+      "title": "Notify On Recovery",
+      "desc": "Send ntfy when a stale sensor starts reporting again (default 1).",
+      "isRequired": false
+    },
+    {
+      "name": "ntfy_topic",
+      "title": "ntfy Topic",
+      "desc": "Optional: set to enable push notifications via ntfy.",
+      "isRequired": false
+    },
+    {
+      "name": "ntfy_server",
+      "title": "ntfy Server URL",
+      "desc": "Optional: ntfy server URL.",
+      "isRequired": false
+    },
+    {
+      "name": "ntfy_token",
+      "title": "ntfy Access Token",
+      "desc": "Optional bearer token for private ntfy topics.",
+      "isRequired": false
+    }
+  ],
   "credits": [
     {
       "title": "SensorPush",
-      "version": "2026.7.021"
+      "version": "2026.7.030"
     }
   ],
   "profile_version": "9",
