@@ -50,7 +50,6 @@ def main() -> None:
     polyglot.start()
     _dedupe_all_loggers()
     _set_mqtt_logger_silent()
-    polyglot.setCustomParamsDoc()
 
     controller = SensorPushController(polyglot)
     polyglot.subscribe(polyglot.START, controller.start)
@@ -59,9 +58,6 @@ def main() -> None:
     if stop_event is not None:
         polyglot.subscribe(stop_event, controller.stop)
     polyglot.subscribe(polyglot.CUSTOMPARAMS, controller.custom_params_changed)
-    custom_typed_data_event = getattr(polyglot, "CUSTOMTYPEDDATA", None)
-    if custom_typed_data_event is not None:
-        polyglot.subscribe(custom_typed_data_event, controller.custom_typed_data_changed)
     polyglot.addNode(controller, conn_status=True)
 
     polyglot.ready()

@@ -2,6 +2,8 @@ ND-controller-NAME = SensorPush Controller
 ND-controller-ICON = GenericCtl
 ND-sensor-NAME = SensorPush Sensor
 ND-sensor-ICON = GenericSensor
+ND-sp_gateway-NAME = SensorPush Gateway
+ND-sp_gateway-ICON = GenericSensor
 
 ST-controller-ST-NAME = Cloud Connection
 ST-controller-GV0-NAME = Sensor Count
@@ -19,6 +21,7 @@ ST-sensor-GV4-NAME = VPD (kPa)
 ST-sensor-GV5-NAME = Signal (dBm)
 ST-sensor-GV6-NAME = Barometric
 ST-sensor-GV7-NAME = Heat Index (F)
+ST-sp_gateway-ST-NAME = Gateway Online
 
 CMD-controller-QUERY-NAME = Query
 

@@ -32,4 +32,14 @@
       <accepts />
     </cmds>
   </nodeDef>
+
+  <nodeDef id="sp_gateway" nls="sp_gateway">
+    <sts>
+      <st id="ST" editor="onoff" />
+    </sts>
+    <cmds>
+      <sends />
+      <accepts />
+    </cmds>
+  </nodeDef>
 </nodeDefs>

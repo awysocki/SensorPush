@@ -8,6 +8,7 @@ Starter PG3 node server for polling SensorPush Gateway Cloud API.
 - Default production behavior: update on PG3 long poll (5 minutes).
 - Optional test behavior: update on PG3 short poll (1 minute).
 - Auto-manage per-sensor child nodes (add new sensors, remove missing sensors).
+- Auto-manage per-gateway child nodes (add new gateways, remove missing gateways).
 - BLE support can be added later.
 
 ## Per-Sensor Node Lifecycle
@@ -26,6 +27,18 @@ Child node metrics currently include:
 - Dew point (F)
 - VPD (kPa)
 - Signal (dBm, when provided by API)
+
+## Per-Gateway Node Lifecycle
+
+Each SensorPush gateway is represented as a dedicated PG3 child node under the controller.
+
+- New gateway appears in SensorPush: a new gateway child node is created automatically.
+- Existing gateway remains: gateway online/offline status is updated.
+- Gateway removed from SensorPush: corresponding gateway child node is deleted automatically.
+
+Gateway node metrics currently include:
+
+- Online/Offline status
 
 Controller metrics include:
 
