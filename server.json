@@ -8,7 +8,7 @@
   "longPoll": 300,
   "restart": true,
   "interface": "mqtt",
-  "version": "2026.7.044",
+  "version": "2026.7.045",
   "discover": true,
   "oauth": false,
   "status_node": null,
@@ -33,21 +33,21 @@
       "isRequired": false
     },
     {
-      "name": "sample_limit",
-      "title": "Sample Limit",
-      "desc": "How many samples to request per sensor (default 1).",
+      "name": "fetch_limit",
+      "title": "Fetch Limit",
+      "desc": "How many recent samples to request per sensor (default 1).",
       "isRequired": false
     },
     {
-      "name": "sensor_stale_hours",
-      "title": "Sensor Stale Hours",
+      "name": "sensor_offline_hours",
+      "title": "Sensor Offline Hours",
       "desc": "Alert when no fresh sample is seen for this many hours (default 1).",
       "isRequired": false
     },
     {
-      "name": "sensor_stale_notify_recovery",
+      "name": "sensor_offline_notify_recovery",
       "title": "Notify On Recovery",
-      "desc": "Send ntfy when a stale sensor starts reporting again (default 1).",
+      "desc": "Send ntfy when an offline sensor starts reporting again (default 1).",
       "isRequired": false
     },
     {
@@ -72,7 +72,7 @@
   "credits": [
     {
       "title": "SensorPush",
-      "version": "2026.7.044"
+      "version": "2026.7.045"
     }
   ],
   "profile_version": "9",

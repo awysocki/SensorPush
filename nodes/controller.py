@@ -27,9 +27,9 @@ class SensorPushController(Node):
         {"name": "sensorpush_email", "title": "SensorPush Email", "desc": "Required SensorPush account email.", "isRequired": True},
         {"name": "sensorpush_password", "title": "SensorPush Password", "desc": "Required SensorPush account password.", "isRequired": True},
         {"name": "use_short_poll_updates", "title": "Use Short Poll Updates", "desc": "Default 0: set 1 for 1-minute test updates.", "isRequired": False, "defaultValue": "0"},
-        {"name": "sample_limit", "title": "Sample Limit", "desc": "How many samples to request per sensor (default 1).", "isRequired": False, "defaultValue": "1"},
-        {"name": "sensor_stale_hours", "title": "Sensor Stale Hours", "desc": "Alert when no fresh sample is seen for this many hours (default 1).", "isRequired": False, "defaultValue": "1"},
-        {"name": "sensor_stale_notify_recovery", "title": "Notify On Recovery", "desc": "Send ntfy when a stale sensor starts reporting again (default 1).", "isRequired": False, "defaultValue": "1"},
+        {"name": "fetch_limit", "title": "Fetch Limit", "desc": "How many recent samples to request per sensor (default 1).", "isRequired": False, "defaultValue": "1"},
+        {"name": "sensor_offline_hours", "title": "Sensor Offline Hours", "desc": "Alert when no fresh sample is seen for this many hours (default 1).", "isRequired": False, "defaultValue": "1"},
+        {"name": "sensor_offline_notify_recovery", "title": "Notify On Recovery", "desc": "Send ntfy when an offline sensor starts reporting again (default 1).", "isRequired": False, "defaultValue": "1"},
         {"name": "ntfy_topic", "title": "ntfy Topic", "desc": "Optional: set to enable push notifications via ntfy.", "isRequired": False, "defaultValue": ""},
         {"name": "ntfy_server", "title": "ntfy Server URL", "desc": "Optional: ntfy server URL.", "isRequired": False, "defaultValue": "https://ntfy.sh"},
         {"name": "ntfy_token", "title": "ntfy Access Token", "desc": "Optional bearer token for private ntfy topics.", "isRequired": False, "defaultValue": ""},
@@ -89,7 +89,8 @@ class SensorPushController(Node):
         self._last_poll_utc: datetime | None = None
         self._typed_params_data: Dict[str, Any] = {}
         self._sensor_last_seen_utc: Dict[str, datetime] = {}
-        self._sensor_stale_alerted: set[str] = set()
+        self._sensor_offline_alerted: set[str] = set()
+        self._gateway_offline_alerted: set[str] = set()
         self._gateway_defs_refreshed = False
         self._startup_notified = False
 
@@ -361,13 +362,13 @@ class SensorPushController(Node):
                     return parsed
         return None
 
-    def _is_sensor_stale(self, last_seen_utc: datetime | None, now_utc: datetime) -> bool:
+    def _is_sensor_offline(self, last_seen_utc: datetime | None, now_utc: datetime) -> bool:
         if last_seen_utc is None:
             return False
-        if self._runtime_config.sensor_stale_hours <= 0:
+        if self._runtime_config.sensor_offline_hours <= 0:
             return False
         age_seconds = (now_utc - last_seen_utc).total_seconds()
-        return age_seconds >= (self._runtime_config.sensor_stale_hours * 3600.0)
+        return age_seconds >= (self._runtime_config.sensor_offline_hours * 3600.0)
 
     def _notify_ntfy(self, title: str, message: str, tags: str) -> None:
         topic = self._runtime_config.ntfy_topic.strip()
@@ -399,50 +400,73 @@ class SensorPushController(Node):
         except Exception:
             LOGGER.exception("Failed to publish ntfy notification")
 
-    def _handle_stale_state(
+    def _handle_offline_state(
         self,
         sensor_id: str,
         sensor_name: str,
-        stale: bool,
+        offline: bool,
         last_seen_utc: datetime,
         now_utc: datetime,
     ) -> None:
         age_hours = (now_utc - last_seen_utc).total_seconds() / 3600.0
         alert_key = sensor_id
 
-        if stale and alert_key not in self._sensor_stale_alerted:
-            self._sensor_stale_alerted.add(alert_key)
+        if offline and alert_key not in self._sensor_offline_alerted:
+            self._sensor_offline_alerted.add(alert_key)
             LOGGER.warning(
-                "Sensor appears stale: %s (%s) last_seen_utc=%s age_hours=%.2f threshold_hours=%.2f",
+                "Sensor appears offline: %s (%s) last_seen_utc=%s age_hours=%.2f threshold_hours=%.2f",
                 sensor_name,
                 sensor_id,
                 last_seen_utc.isoformat(),
                 age_hours,
-                self._runtime_config.sensor_stale_hours,
+                self._runtime_config.sensor_offline_hours,
             )
             self._notify_ntfy(
-                title="Sensor stale",
+                title="Sensor offline",
                 message=(
-                    f"Sensor '{sensor_name}' ({sensor_id}) has not updated for {age_hours:.1f}h "
-                    f"(threshold {self._runtime_config.sensor_stale_hours:.1f}h)."
+                    f"Sensor '{sensor_name}' ({sensor_id}) is offline after {age_hours:.1f}h "
+                    f"(threshold {self._runtime_config.sensor_offline_hours:.1f}h)."
                 ),
                 tags="warning,sensorpush",
             )
             return
 
-        if not stale and alert_key in self._sensor_stale_alerted:
-            self._sensor_stale_alerted.remove(alert_key)
-            LOGGER.info("Sensor recovered from stale state: %s (%s)", sensor_name, sensor_id)
-            if self._runtime_config.sensor_stale_notify_recovery:
+        if not offline and alert_key in self._sensor_offline_alerted:
+            self._sensor_offline_alerted.remove(alert_key)
+            LOGGER.info("Sensor recovered from offline state: %s (%s)", sensor_name, sensor_id)
+            if self._runtime_config.sensor_offline_notify_recovery:
                 self._notify_ntfy(
-                    title="Sensor recovered",
+                    title="Sensor online",
                     message=f"Sensor '{sensor_name}' ({sensor_id}) is reporting again.",
+                    tags="white_check_mark,sensorpush",
+                )
+
+    def _handle_gateway_state(self, gateway_id: str, gateway_name: str, online: bool) -> None:
+        alert_key = gateway_id
+
+        if not online and alert_key not in self._gateway_offline_alerted:
+            self._gateway_offline_alerted.add(alert_key)
+            LOGGER.warning("Gateway appears offline: %s (%s)", gateway_name, gateway_id)
+            self._notify_ntfy(
+                title="Gateway offline",
+                message=f"Gateway '{gateway_name}' ({gateway_id}) is offline.",
+                tags="warning,sensorpush",
+            )
+            return
+
+        if online and alert_key in self._gateway_offline_alerted:
+            self._gateway_offline_alerted.remove(alert_key)
+            LOGGER.info("Gateway recovered from offline state: %s (%s)", gateway_name, gateway_id)
+            if self._runtime_config.sensor_offline_notify_recovery:
+                self._notify_ntfy(
+                    title="Gateway online",
+                    message=f"Gateway '{gateway_name}' ({gateway_id}) is back online.",
                     tags="white_check_mark,sensorpush",
                 )
 
     def _sync_sensor_nodes(self, sensors: Dict[str, Any], sample_map: Dict[str, Any], poll_utc: datetime) -> int:
         active_addresses: set[str] = set()
-        stale_count = 0
+        offline_count = 0
 
         for sensor_id, sensor_data in sensors.items():
             sensor_id_text = str(sensor_id)
@@ -472,14 +496,14 @@ class SensorPushController(Node):
                 last_seen_utc = poll_utc
 
             self._sensor_last_seen_utc[sensor_id_text] = last_seen_utc
-            is_stale = self._is_sensor_stale(last_seen_utc, poll_utc)
-            if is_stale:
-                stale_count += 1
+            is_offline = self._is_sensor_offline(last_seen_utc, poll_utc)
+            if is_offline:
+                offline_count += 1
 
-            self._handle_stale_state(
+            self._handle_offline_state(
                 sensor_id=sensor_id_text,
                 sensor_name=sensor_name,
-                stale=is_stale,
+                offline=is_offline,
                 last_seen_utc=last_seen_utc,
                 now_utc=poll_utc,
             )
@@ -511,7 +535,7 @@ class SensorPushController(Node):
                 heat_index_f = self._calc_heat_index_f(temperature_f, humidity_pct)
 
             node.set_metrics(
-                connected=not is_stale,
+                connected=not is_offline,
                 temperature_f=temperature_f,
                 humidity_pct=humidity_pct,
                 battery_v=battery_v,
@@ -527,21 +551,21 @@ class SensorPushController(Node):
             for address, _ in self._get_existing_nodes().items()
             if isinstance(address, str) and address.startswith(self._sensor_addr_prefix)
         }
-        stale_addresses = sorted(existing_sensor_addresses - active_addresses)
-        for address in stale_addresses:
+        offline_addresses = sorted(existing_sensor_addresses - active_addresses)
+        for address in offline_addresses:
             try:
                 self._delete_node(address)
-                LOGGER.info("Deleted stale child sensor node: %s", address)
+                LOGGER.info("Deleted offline child sensor node: %s", address)
             except Exception:
-                LOGGER.exception("Failed deleting stale child sensor node: %s", address)
+                LOGGER.exception("Failed deleting offline child sensor node: %s", address)
 
         active_sensor_ids = {str(sensor_id) for sensor_id in sensors.keys()}
-        for stale_sensor_id in list(self._sensor_last_seen_utc.keys()):
-            if stale_sensor_id not in active_sensor_ids:
-                self._sensor_last_seen_utc.pop(stale_sensor_id, None)
-                self._sensor_stale_alerted.discard(stale_sensor_id)
+        for offline_sensor_id in list(self._sensor_last_seen_utc.keys()):
+            if offline_sensor_id not in active_sensor_ids:
+                self._sensor_last_seen_utc.pop(offline_sensor_id, None)
+                self._sensor_offline_alerted.discard(offline_sensor_id)
 
-        return stale_count
+        return offline_count
 
     def _sync_gateway_nodes(self, gateways: Dict[str, Any]) -> None:
         if not self._gateway_defs_refreshed:
@@ -581,19 +605,20 @@ class SensorPushController(Node):
 
             online = self._extract_gateway_online(gateway_data)
             node.set_online(online)
+            self._handle_gateway_state(gateway_id_text, gateway_name, online)
 
         existing_gateway_addresses = {
             address
             for address, _ in self._get_existing_nodes().items()
             if isinstance(address, str) and address.startswith(self._gateway_addr_prefix)
         }
-        stale_addresses = sorted(existing_gateway_addresses - active_addresses)
-        for address in stale_addresses:
+        offline_addresses = sorted(existing_gateway_addresses - active_addresses)
+        for address in offline_addresses:
             try:
                 self._delete_node(address)
-                LOGGER.info("Deleted stale child gateway node: %s", address)
+                LOGGER.info("Deleted offline child gateway node: %s", address)
             except Exception:
-                LOGGER.exception("Failed deleting stale child gateway node: %s", address)
+                LOGGER.exception("Failed deleting offline child gateway node: %s", address)
 
     def _get_custom_params(self) -> Dict[str, str]:
         config = getattr(self.poly, "polyConfig", None) or {}
@@ -630,9 +655,9 @@ class SensorPushController(Node):
             "sensorpush_password",
             "sensorpush_account_token",
             "use_short_poll_updates",
-            "sample_limit",
-            "sensor_stale_hours",
-            "sensor_stale_notify_recovery",
+            "fetch_limit",
+            "sensor_offline_hours",
+            "sensor_offline_notify_recovery",
             "ntfy_topic",
             "ntfy_server",
             "ntfy_token",
@@ -765,9 +790,9 @@ class SensorPushController(Node):
             return
 
         LOGGER.info(
-            "Custom typed params updated. update_mode=%s sample_limit=%s",
+            "Custom typed params updated. update_mode=%s fetch_limit=%s",
             "short" if self._runtime_config.use_short_poll_updates else "long",
-            self._runtime_config.sample_limit,
+            self._runtime_config.fetch_limit,
         )
 
         current_topic = self._runtime_config.ntfy_topic.strip()
@@ -811,14 +836,14 @@ class SensorPushController(Node):
 
             samples_payload = self._client.get_samples(
                 sensor_ids=sensor_ids,
-                limit=self._runtime_config.sample_limit,
+                limit=self._runtime_config.fetch_limit,
             )
             sample_map = samples_payload.get("sensors", {}) if isinstance(samples_payload, dict) else {}
             if not isinstance(sample_map, dict):
                 sample_map = {}
 
             poll_utc = datetime.now(timezone.utc)
-            stale_count = self._sync_sensor_nodes(
+            offline_count = self._sync_sensor_nodes(
                 sensors=sensors,
                 sample_map=sample_map,
                 poll_utc=poll_utc,
@@ -832,17 +857,17 @@ class SensorPushController(Node):
             self.setDriver("ST", 1)
             self.setDriver("GV0", len(sensor_ids))
             self.setDriver("GV1", total_samples)
-            self.setDriver("GV2", stale_count)
+            self.setDriver("GV2", offline_count)
             self.reportDrivers()
             self._last_poll_utc = poll_utc
 
             LOGGER.info(
-                "SensorPush %s update complete: sensors=%s gateways=%s samples=%s stale=%s",
+                "SensorPush %s update complete: sensors=%s gateways=%s samples=%s offline=%s",
                 reason,
                 len(sensor_ids),
                 len(gateways),
                 total_samples,
-                stale_count,
+                offline_count,
             )
         except SensorPushApiError as err:
             self.setDriver("ST", 0)

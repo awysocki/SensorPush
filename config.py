@@ -37,12 +37,12 @@ class RuntimeConfig:
     email: str = ""
     account_token: str = ""
     use_short_poll_updates: bool = False
-    sample_limit: int = 1
-    sensor_stale_hours: float = 24.0
+    fetch_limit: int = 1
+    sensor_offline_hours: float = 24.0
     ntfy_topic: str = ""
     ntfy_server: str = "https://ntfy.sh"
     ntfy_token: str = ""
-    sensor_stale_notify_recovery: bool = True
+    sensor_offline_notify_recovery: bool = True
 
     @classmethod
     def from_sources(
@@ -65,22 +65,22 @@ class RuntimeConfig:
         use_short = _as_bool(
             custom.get("use_short_poll_updates")
             if "use_short_poll_updates" in custom
-            else environ.get("SENSORPUSH_USE_SHORT_POLL_UPDATES"),
+            else environ.get("USE_SHORT_POLL_UPDATES"),
             default=False,
         )
 
-        sample_limit = _as_int(
-            custom.get("sample_limit")
-            if "sample_limit" in custom
-            else environ.get("SENSORPUSH_SAMPLE_LIMIT"),
+        fetch_limit = _as_int(
+            custom.get("fetch_limit")
+            if "fetch_limit" in custom
+            else environ.get("FETCH_LIMIT"),
             default=1,
             minimum=1,
         )
 
-        sensor_stale_hours = _as_float(
-            custom.get("sensor_stale_hours")
-            if "sensor_stale_hours" in custom
-            else environ.get("SENSOR_STALE_HOURS"),
+        sensor_offline_hours = _as_float(
+            custom.get("sensor_offline_hours")
+            if "sensor_offline_hours" in custom
+            else environ.get("SENSOR_OFFLINE_HOURS"),
             default=24.0,
             minimum=0.0,
         )
@@ -92,10 +92,10 @@ class RuntimeConfig:
         ).strip()
         ntfy_server = str(custom.get("ntfy_server") or environ.get("NTFY_SERVER") or "https://ntfy.sh").strip()
         ntfy_token = str(custom.get("ntfy_token") or environ.get("NTFY_TOKEN") or "").strip()
-        sensor_stale_notify_recovery = _as_bool(
-            custom.get("sensor_stale_notify_recovery")
-            if "sensor_stale_notify_recovery" in custom
-            else environ.get("SENSOR_STALE_NOTIFY_RECOVERY"),
+        sensor_offline_notify_recovery = _as_bool(
+            custom.get("sensor_offline_notify_recovery")
+            if "sensor_offline_notify_recovery" in custom
+            else environ.get("SENSOR_OFFLINE_NOTIFY_RECOVERY"),
             default=True,
         )
 
@@ -103,10 +103,10 @@ class RuntimeConfig:
             email=email,
             account_token=account_token,
             use_short_poll_updates=use_short,
-            sample_limit=sample_limit,
-            sensor_stale_hours=sensor_stale_hours,
+            fetch_limit=fetch_limit,
+            sensor_offline_hours=sensor_offline_hours,
             ntfy_topic=ntfy_topic,
             ntfy_server=ntfy_server,
             ntfy_token=ntfy_token,
-            sensor_stale_notify_recovery=sensor_stale_notify_recovery,
+            sensor_offline_notify_recovery=sensor_offline_notify_recovery,
         )
