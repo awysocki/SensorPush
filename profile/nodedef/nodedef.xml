@@ -26,6 +26,7 @@
       <st id="GV5" editor="signal_dbm" />
       <st id="GV6" editor="barometric_pressure" />
       <st id="GV7" editor="heat_index_f" />
+      <st id="GV8" editor="sensor_type_index" />
     </sts>
     <cmds>
       <sends />

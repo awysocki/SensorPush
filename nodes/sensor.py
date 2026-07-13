@@ -18,6 +18,7 @@ class SensorPushSensorNode(Node):
         {"driver": "GV5", "value": 0, "uom": 56},
         {"driver": "GV6", "value": 0, "uom": 56},
         {"driver": "GV7", "value": 0, "uom": 17},
+        {"driver": "GV8", "value": 0, "uom": 25},
     ]
 
     commands = {}
@@ -37,6 +38,7 @@ class SensorPushSensorNode(Node):
         signal_dbm: float | None,
         barometric: float | None,
         heat_index_f: float | None,
+        sensor_type_index: int,
     ) -> None:
         self.setDriver("ST", 1 if connected else 0)
 
@@ -56,5 +58,6 @@ class SensorPushSensorNode(Node):
             self.setDriver("GV6", round(float(barometric), 2))
         if heat_index_f is not None:
             self.setDriver("GV7", round(float(heat_index_f), 1))
+        self.setDriver("GV8", int(sensor_type_index))
 
         self.reportDrivers()

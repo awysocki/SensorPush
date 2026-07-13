@@ -23,6 +23,11 @@ LOGGER = udi_interface.LOGGER
 
 class SensorPushController(Node):
     id = "controller"
+    SENSOR_TYPE_INDEX = {
+        "HT1": 1,
+        "HT.W": 2,
+        "HTP.XW": 3,
+    }
     PARAM_NOTICE_KEY = "sensorpush_required_params"
     TYPED_PARAM_SCHEMA = [
         {"name": "sensorpush_email", "title": "SensorPush Email", "desc": "Required SensorPush account email.", "isRequired": True},
@@ -200,6 +205,11 @@ class SensorPushController(Node):
                     return parsed
 
         return True
+
+    @classmethod
+    def _sensor_type_index(cls, sensor_type: str | None) -> int:
+        normalized = str(sensor_type or "").strip().upper()
+        return cls.SENSOR_TYPE_INDEX.get(normalized, 0)
 
     def _ensure_required_params(self) -> bool:
         params = self._get_custom_params()
@@ -522,6 +532,17 @@ class SensorPushController(Node):
                 vpd_kpa = self._calc_vpd_kpa(temperature_f, humidity_pct)
 
             signal_dbm = self._first_float(sensor_data, ("rssi", "signal", "signal_dbm", "signalStrength"))
+            sensor_type = None
+            if isinstance(sensor_data, dict):
+                sensor_type = str(
+                    sensor_data.get("device_type")
+                    or sensor_data.get("sensor_type")
+                    or sensor_data.get("type")
+                    or sensor_data.get("model")
+                    or ""
+                ).strip() or None
+            sensor_type_index = self._sensor_type_index(sensor_type)
+
             barometric = self._first_float(
                 latest_sample,
                 ("barometric", "barometric_pressure", "pressure", "pressure_inhg", "pressure_hpa"),
@@ -546,6 +567,7 @@ class SensorPushController(Node):
                 signal_dbm=signal_dbm,
                 barometric=barometric,
                 heat_index_f=heat_index_f,
+                sensor_type_index=sensor_type_index,
             )
 
         existing_sensor_addresses = {

@@ -27,4 +27,7 @@
   <editor id="heat_index_f">
     <range uom="17" min="-100" max="300" prec="1" />
   </editor>
+  <editor id="sensor_type_index">
+    <range uom="25" min="0" max="10" nls="sensor_type_index" />
+  </editor>
 </editors>
