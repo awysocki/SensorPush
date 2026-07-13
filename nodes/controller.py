@@ -5,6 +5,7 @@ import hashlib
 import json
 import math
 import os
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable
 
@@ -86,6 +87,7 @@ class SensorPushController(Node):
         self._gateway_addr_prefix = f"g{instance_token}_"
         self._runtime_config = RuntimeConfig()
         self._client: SensorPushClient | None = None
+        self._server_version = self._resolve_server_version()
         self._last_poll_utc: datetime | None = None
         self._typed_params_data: Dict[str, Any] = {}
         self._sensor_last_seen_utc: Dict[str, datetime] = {}
@@ -722,6 +724,27 @@ class SensorPushController(Node):
         )
         return merged
 
+    def _resolve_server_version(self) -> str:
+        config = getattr(self.poly, "polyConfig", None) or {}
+        for key in ("version", "nodeVersion", "serverVersion"):
+            raw_value = config.get(key)
+            if raw_value is not None and str(raw_value).strip():
+                return str(raw_value).strip()
+
+        try:
+            server_json_path = Path(__file__).resolve().parent.parent / "server.json"
+            server_json = json.loads(server_json_path.read_text(encoding="utf-8"))
+            raw_version = server_json.get("version")
+            if raw_version is not None and str(raw_version).strip():
+                return str(raw_version).strip()
+        except Exception:
+            LOGGER.debug("Unable to resolve server version from server.json", exc_info=True)
+
+        return "unknown"
+
+    def _startup_ntfy_message(self) -> str:
+        return f"SensorPush node server started and is running. Version: {self._server_version}."
+
     def _reload_config(self, custom_params: Dict[str, str] | None = None) -> None:
         if custom_params is None:
             custom_params = self._get_custom_params()
@@ -771,7 +794,7 @@ class SensorPushController(Node):
         if startup_topic:
             self._notify_ntfy(
                 title="SensorPush started",
-                message="SensorPush node server started and is running.",
+                message=self._startup_ntfy_message(),
                 tags="rocket,sensorpush",
             )
             self._startup_notified = True
@@ -799,7 +822,7 @@ class SensorPushController(Node):
         if current_topic and not self._startup_notified:
             self._notify_ntfy(
                 title="SensorPush started",
-                message="SensorPush node server started and is running.",
+                message=self._startup_ntfy_message(),
                 tags="rocket,sensorpush",
             )
             self._startup_notified = True
