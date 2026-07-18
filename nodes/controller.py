@@ -697,6 +697,26 @@ class SensorPushController(Node):
 
             online = self._extract_gateway_online(gateway_data)
             paired = self._extract_gateway_paired(gateway_data)
+            computed_st = 2 if not paired else (1 if online else 0)
+
+            gateway_debug_fields: Dict[str, Any] = {}
+            if isinstance(gateway_data, dict):
+                for key, value in gateway_data.items():
+                    key_text = str(key)
+                    key_norm = key_text.strip().lower()
+                    if any(token in key_norm for token in ("pair", "online", "status", "state", "connect", "reach")):
+                        gateway_debug_fields[key_text] = value
+
+            LOGGER.warning(
+                "Gateway status diag: name=%s id=%s paired=%s online=%s st=%s raw_fields=%s",
+                gateway_name,
+                gateway_id_text,
+                paired,
+                online,
+                computed_st,
+                gateway_debug_fields,
+            )
+
             node.set_status(online=online, paired=paired)
             self._handle_gateway_state(gateway_id_text, gateway_name, online and paired)
 
